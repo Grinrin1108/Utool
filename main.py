@@ -16,6 +16,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 async def on_ready():
     print(f"Logged in as {bot.user}")
 
+# ====== コマンド定義 ======
 @bot.command()
 async def ping(ctx):
     await ctx.send("Pong!")
