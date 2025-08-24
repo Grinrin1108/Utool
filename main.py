@@ -22,5 +22,9 @@ async def on_ready():
 async def ping(ctx):
     await ctx.send("Pong!")
 
+@bot.command()
+async def hello(ctx):
+    await ctx.send("Hello!")
+
 bot.run(TOKEN)
 
