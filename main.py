@@ -12,6 +12,7 @@ intents.message_content = True  # メッセージ読み取り用
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
+# ====== イベント定義 ======
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user}")
