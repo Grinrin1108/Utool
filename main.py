@@ -34,9 +34,9 @@ async def hello(ctx):
     await ctx.send("Hello!")
 
 def run_discord():
-    TOKEN = os.getenv("DISCORD_TOKEN")
+    TOKEN = os.getenv("TOKEN")
     if TOKEN is None:
-        raise ValueError("環境変数 DISCORD_TOKEN が設定されていません")
+        raise ValueError("環境変数 TOKEN が設定されていません")
     bot.run(TOKEN)
 
 # ====== 並列実行 ======
