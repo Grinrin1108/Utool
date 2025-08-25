@@ -1,16 +1,29 @@
-# main.py
 import os
 import discord
 from discord.ext import commands, tasks
-import asyncio
 from dotenv import load_dotenv
+import asyncio
 from flask import Flask
-import threading
+from threading import Thread
+import random
 
 # 環境変数読み込み
 load_dotenv()
 TOKEN = os.getenv("TOKEN")
-PORT = int(os.getenv("PORT", 10000))  # RenderのPORT環境変数
+PORT = int(os.getenv("PORT", 10000))  # RenderのPORTを使用
+
+# ===== Flask ヘルスチェック =====
+app = Flask(__name__)
+
+@app.route("/")
+def home():
+    return "Bot is running!"
+
+def run_flask():
+    app.run(host="0.0.0.0", port=PORT)
+
+# Flaskを別スレッドで起動
+Thread(target=run_flask).start()
 
 # ===== Discord Bot 設定 =====
 intents = discord.Intents.default()
@@ -21,18 +34,35 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # ===== イベント =====
 @bot.event
 async def on_ready():
-    print(f"Bot logged in as {bot.user}")
+    print(f"Logged in as {bot.user}")
 
-# ===== ユーティリティコマンド =====
+# ===== ユーティリティ系 =====
 @bot.command()
 async def userinfo(ctx, member: discord.Member = None):
     member = member or ctx.author
-    embed = discord.Embed(title=f"{member}", description="ユーザー情報", color=0x00ff00)
+    embed = discord.Embed(title=f"{member}", description=f"ユーザー情報", color=0x00ff00)
     embed.add_field(name="ID", value=member.id)
     embed.add_field(name="作成日", value=member.created_at.strftime("%Y-%m-%d %H:%M:%S"))
     embed.set_thumbnail(url=member.avatar.url)
     await ctx.send(embed=embed)
 
+@bot.command()
+async def serverinfo(ctx):
+    guild = ctx.guild
+    embed = discord.Embed(title=f"{guild.name}", description="サーバー情報", color=0x0000ff)
+    embed.add_field(name="ID", value=guild.id)
+    embed.add_field(name="メンバー数", value=guild.member_count)
+    embed.set_thumbnail(url=guild.icon.url if guild.icon else None)
+    await ctx.send(embed=embed)
+
+@bot.command()
+async def avatar(ctx, member: discord.Member = None):
+    member = member or ctx.author
+    embed = discord.Embed(title=f"{member}'s Avatar")
+    embed.set_image(url=member.avatar.url)
+    await ctx.send(embed=embed)
+
+# ===== 遊び・便利系 =====
 @bot.command()
 async def roll(ctx, dice: str):
     """例: !roll 2d6"""
@@ -41,23 +71,37 @@ async def roll(ctx, dice: str):
     except Exception:
         await ctx.send("形式が違います。例: `!roll 2d6`")
         return
-    results = [discord.utils.randint(1, limit) for _ in range(rolls)]
+    results = [random.randint(1, limit) for _ in range(rolls)]
     await ctx.send(f"{ctx.author.mention} rolled {dice}: {results} → 合計: {sum(results)}")
 
-# ===== Flask ヘルスチェック =====
-app = Flask("Utool HealthCheck")
+@bot.command()
+async def poll(ctx, question: str, *options):
+    if len(options) < 2:
+        await ctx.send("選択肢は2つ以上必要です。")
+        return
+    emojis = ["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"]
+    description = "\n".join(f"{emojis[i]} {opt}" for i,opt in enumerate(options))
+    embed = discord.Embed(title=question, description=description, color=0xffa500)
+    msg = await ctx.send(embed=embed)
+    for i in range(len(options)):
+        await msg.add_reaction(emojis[i])
 
-@app.route("/")
-def home():
-    return "Bot is running!", 200
+@bot.command()
+async def remind(ctx, time: str, *, message):
+    """例: !remind 10m メッセージ"""
+    amount = int(time[:-1])
+    unit = time[-1]
+    seconds = amount * 60 if unit == "m" else amount * 3600 if unit=="h" else amount
+    await ctx.send(f"{ctx.author.mention} リマインダーセット: {message} (あと {time})")
+    await asyncio.sleep(seconds)
+    await ctx.send(f"{ctx.author.mention} リマインダー: {message}")
 
-def run_flask():
-    # RenderのPORTでバインド
-    app.run(host="0.0.0.0", port=PORT)
+# ===== 管理系 =====
+@bot.command()
+@commands.is_owner()
+async def clear(ctx, amount: int = 5):
+    deleted = await ctx.channel.purge(limit=amount)
+    await ctx.send(f"{len(deleted)} 件削除しました。", delete_after=5)
 
-# ===== メイン処理 =====
-if __name__ == "__main__":
-    # Flaskをスレッドで軽く立ち上げる
-    threading.Thread(target=run_flask).start()
-    # Discord Botを非同期で起動
-    bot.run(TOKEN)
+# ===== Bot 起動 =====
+bot.run(TOKEN)
