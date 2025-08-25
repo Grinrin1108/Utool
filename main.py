@@ -1,42 +1,60 @@
+# main.py
 import os
 import discord
 from discord.ext import commands, tasks
 from dotenv import load_dotenv
 import asyncio
-from flask import Flask
-from threading import Thread
+import nest_asyncio
 import random
+from datetime import datetime
+from flask import Flask
+import threading
+import requests
+import time
 
-# 環境変数読み込み
+# Render用非同期調整
+nest_asyncio.apply()
 load_dotenv()
 TOKEN = os.getenv("TOKEN")
-PORT = int(os.getenv("PORT", 10000))  # RenderのPORTを使用
+PORT = int(os.getenv("PORT", 10000))
+SELF_URL = os.getenv("SELF_URL")  # Render URL, Ping用
 
-# ===== Flask ヘルスチェック =====
-app = Flask(__name__)
-
-@app.route("/")
-def home():
-    return "Bot is running!"
-
-def run_flask():
-    app.run(host="0.0.0.0", port=PORT)
-
-# Flaskを別スレッドで起動
-Thread(target=run_flask).start()
-
-# ===== Discord Bot 設定 =====
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# ===== イベント =====
+# ===== Flaskヘルスチェック =====
+app = Flask(__name__)
+
+@app.route("/")
+def health():
+    return "Bot is alive!"
+
+def run_flask():
+    app.run(host="0.0.0.0", port=PORT)
+
+# ===== 自動Pingでスリープ復帰 =====
+def keep_alive():
+    while True:
+        try:
+            if SELF_URL:
+                requests.get(SELF_URL)
+        except:
+            pass
+        time.sleep(300)  # 5分おき
+
+# ===== Botイベント =====
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user}")
 
-# ===== ユーティリティ系 =====
+@bot.event
+async def on_error(event_method, *args, **kwargs):
+    import traceback
+    print(f"Error in {event_method}: {traceback.format_exc()}")
+
+# ===== ユーティリティコマンド =====
 @bot.command()
 async def userinfo(ctx, member: discord.Member = None):
     member = member or ctx.author
@@ -62,10 +80,9 @@ async def avatar(ctx, member: discord.Member = None):
     embed.set_image(url=member.avatar.url)
     await ctx.send(embed=embed)
 
-# ===== 遊び・便利系 =====
+# ===== 遊び系コマンド =====
 @bot.command()
 async def roll(ctx, dice: str):
-    """例: !roll 2d6"""
     try:
         rolls, limit = map(int, dice.lower().split('d'))
     except Exception:
@@ -88,7 +105,6 @@ async def poll(ctx, question: str, *options):
 
 @bot.command()
 async def remind(ctx, time: str, *, message):
-    """例: !remind 10m メッセージ"""
     amount = int(time[:-1])
     unit = time[-1]
     seconds = amount * 60 if unit == "m" else amount * 3600 if unit=="h" else amount
@@ -103,5 +119,8 @@ async def clear(ctx, amount: int = 5):
     deleted = await ctx.channel.purge(limit=amount)
     await ctx.send(f"{len(deleted)} 件削除しました。", delete_after=5)
 
-# ===== Bot 起動 =====
-bot.run(TOKEN)
+# ===== 非同期でFlask & Bot同時起動 =====
+if __name__ == "__main__":
+    threading.Thread(target=run_flask, daemon=True).start()
+    threading.Thread(target=keep_alive, daemon=True).start()
+    bot.run(TOKEN)
