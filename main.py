@@ -26,5 +26,10 @@ async def ping(ctx):
 async def hello(ctx):
     await ctx.send("Hello!")
 
+@bot.command()
+async def add(ctx, a: int, b: int):
+    res = a + b
+    await ctx.send(f"{a}+{b}={res}")
+
 bot.run(TOKEN)
 
