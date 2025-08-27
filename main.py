@@ -63,6 +63,7 @@ async def on_ready():
     print(f"Logged in as {bot.user} (slash commands synced)")
 
 # ===== スラッシュコマンド =====
+# ユーザー情報表示
 @bot.tree.command(name="userinfo", description="ユーザー情報を表示します")
 async def userinfo(interaction: discord.Interaction, member: discord.Member = None):
     member = member or interaction.user
@@ -72,6 +73,7 @@ async def userinfo(interaction: discord.Interaction, member: discord.Member = No
     embed.set_thumbnail(url=member.avatar.url if member.avatar else None)
     await interaction.response.send_message(embed=embed)
 
+# サーバー情報表示
 @bot.tree.command(name="serverinfo", description="サーバー情報を表示します")
 async def serverinfo(interaction: discord.Interaction):
     guild = interaction.guild
@@ -81,6 +83,7 @@ async def serverinfo(interaction: discord.Interaction):
     embed.set_thumbnail(url=guild.icon.url if guild.icon else None)
     await interaction.response.send_message(embed=embed)
 
+# アバター表示
 @bot.tree.command(name="avatar", description="ユーザーのアバターを表示します")
 async def avatar(interaction: discord.Interaction, member: discord.Member = None):
     member = member or interaction.user
@@ -88,6 +91,7 @@ async def avatar(interaction: discord.Interaction, member: discord.Member = None
     embed.set_image(url=member.avatar.url if member.avatar else None)
     await interaction.response.send_message(embed=embed)
 
+# さいころをふる
 @bot.tree.command(name="roll", description="サイコロを振ります (例: 2d6)")
 async def roll(interaction: discord.Interaction, dice: str):
     try:
@@ -98,6 +102,7 @@ async def roll(interaction: discord.Interaction, dice: str):
     results = [random.randint(1, limit) for _ in range(rolls)]
     await interaction.response.send_message(f"{interaction.user.mention} rolled {dice}: {results} → 合計: {sum(results)}")
 
+# 投票作成
 @bot.tree.command(name="poll", description="投票を作成します")
 async def poll(interaction: discord.Interaction, question: str, option1: str, option2: str, option3: str = None, option4: str = None):
     options = [opt for opt in [option1, option2, option3, option4] if opt]
@@ -112,6 +117,7 @@ async def poll(interaction: discord.Interaction, question: str, option1: str, op
         await msg.add_reaction(emojis[i])
     await interaction.response.send_message("✅ 投票を作成しました", ephemeral=True)
 
+# リマインダー作成
 @bot.tree.command(name="remind", description="リマインダーを設定します (例: 10s / 5m / 1h)")
 async def remind(interaction: discord.Interaction, time_str: str, message: str):
     amount = int(time_str[:-1])
@@ -121,6 +127,7 @@ async def remind(interaction: discord.Interaction, time_str: str, message: str):
     await asyncio.sleep(seconds)
     await interaction.channel.send(f"{interaction.user.mention} リマインダー: {message}")
 
+# メッセージ削除（管理者用）
 @bot.tree.command(name="clear", description="チャンネルのメッセージを削除します（管理者専用）")
 async def clear(interaction: discord.Interaction, amount: int = 5):
     if not interaction.user.guild_permissions.manage_messages:
@@ -130,6 +137,7 @@ async def clear(interaction: discord.Interaction, amount: int = 5):
     await interaction.response.send_message(f"{len(deleted)} 件削除しました。", ephemeral=True)
 
 # ===== Googleカレンダー =====
+# カレンダーの予定一覧表示
 @bot.tree.command(name="cal_list", description="カレンダーの今後の予定を表示します")
 async def cal_list(interaction: discord.Interaction, max_results: int = 5):
     now = datetime.utcnow().isoformat() + 'Z'
@@ -148,6 +156,7 @@ async def cal_list(interaction: discord.Interaction, max_results: int = 5):
         msg += f"{start}: {event['summary']}\n"
     await interaction.response.send_message(msg)
 
+# カレンダーに予定追加
 @bot.tree.command(name="cal_add", description="カレンダーに新しい予定を追加します")
 async def cal_add(interaction: discord.Interaction, summary: str, date: str, time: str = None):
     start_dt = f"{date}T{time}:00" if time else f"{date}T00:00:00"
