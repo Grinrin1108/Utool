@@ -144,7 +144,7 @@ async def clear(interaction: discord.Interaction, amount: int = 5):
     deleted = await interaction.channel.purge(limit=amount)
     await interaction.response.send_message(f"{len(deleted)} 件削除しました。", ephemeral=True)
 
-# ===== カレンダー系（/calグループ） =====
+# ===== カレンダー機能 =====
 class Calendar(app_commands.Group):
     def __init__(self):
         super().__init__(name="cal", description="カレンダー機能")
@@ -153,23 +153,32 @@ class Calendar(app_commands.Group):
     async def add(self, interaction: discord.Interaction, title: str, date: str, time_str: str = None):
         await interaction.response.defer()
         dt_str = f"{date}T{time_str}" if time_str else f"{date}T00:00"
-        try: datetime.fromisoformat(dt_str)
+        try: 
+            dt = datetime.fromisoformat(dt_str)
         except:
             await interaction.followup.send("❌ 日付形式が不正です。YYYY-MM-DD または YYYY-MM-DD HH:MM")
             return
         cal = get_calendar(interaction.guild_id)
         cal.append({"title": title, "datetime": dt_str})
         save_calendars()
-        await interaction.followup.send(f"✅ 予定を追加しました: {title} ({dt_str})")
+        await interaction.followup.send(f"✅ 予定を追加しました: {title} ({dt.strftime('%Y-%m-%d %H:%M')})")
+
+    async def _send_embed_list(self, interaction, events, title):
+        if not events:
+            await interaction.followup.send("予定はありません。")
+            return
+        events_sorted = sorted(events, key=lambda x: x["datetime"])
+        embed = discord.Embed(title=title, color=0x00ff99)
+        for i, ev in enumerate(events_sorted):
+            dt = datetime.fromisoformat(ev["datetime"]).strftime("%Y-%m-%d %H:%M")
+            embed.add_field(name=f"{i+1}. {ev['title']}", value=f"🗓 {dt}", inline=False)
+        await interaction.followup.send(embed=embed)
 
     @app_commands.command(name="list", description="今後の予定を表示します")
     async def list_events(self, interaction: discord.Interaction, max_results: int = 10):
         await interaction.response.defer()
         cal = get_calendar(interaction.guild_id)
-        if not cal: await interaction.followup.send("予定はありません。"); return
-        cal_sorted = sorted(cal, key=lambda x: x["datetime"])
-        msg = "\n".join([f"{i+1}. 🗓 {ev['datetime']} — {ev['title']}" for i, ev in enumerate(cal_sorted[:max_results])])
-        await interaction.followup.send(msg)
+        await self._send_embed_list(interaction, cal[:max_results], "今後の予定")
 
     @app_commands.command(name="today", description="今日の予定を表示します")
     async def today(self, interaction: discord.Interaction):
@@ -177,20 +186,14 @@ class Calendar(app_commands.Group):
         cal = get_calendar(interaction.guild_id)
         today_str = datetime.utcnow().date().isoformat()
         today_events = [ev for ev in cal if ev["datetime"].startswith(today_str)]
-        if not today_events: await interaction.followup.send("今日の予定はありません。"); return
-        today_events.sort(key=lambda x: x["datetime"])
-        msg = "\n".join([f"{i+1}. 🗓 {ev['datetime']} — {ev['title']}" for i, ev in enumerate(today_events)])
-        await interaction.followup.send(msg)
+        await self._send_embed_list(interaction, today_events, "今日の予定")
 
     @app_commands.command(name="search", description="キーワードで予定を検索します")
     async def search(self, interaction: discord.Interaction, keyword: str):
         await interaction.response.defer()
         cal = get_calendar(interaction.guild_id)
         matched = [ev for ev in cal if keyword.lower() in ev["title"].lower()]
-        if not matched: await interaction.followup.send("該当する予定はありません。"); return
-        matched.sort(key=lambda x: x["datetime"])
-        msg = "\n".join([f"{i+1}. 🗓 {ev['datetime']} — {ev['title']}" for i, ev in enumerate(matched)])
-        await interaction.followup.send(msg)
+        await self._send_embed_list(interaction, matched, f"検索結果: {keyword}")
 
     @app_commands.command(name="remove", description="番号で予定を削除します")
     async def remove(self, interaction: discord.Interaction, index: int):
@@ -201,7 +204,8 @@ class Calendar(app_commands.Group):
             return
         removed = cal.pop(index-1)
         save_calendars()
-        await interaction.followup.send(f"✅ 削除しました: {removed['title']} ({removed['datetime']})")
+        dt = datetime.fromisoformat(removed["datetime"]).strftime("%Y-%m-%d %H:%M")
+        await interaction.followup.send(f"✅ 削除しました: {removed['title']} ({dt})")
 
     @app_commands.command(name="clear", description="全予定を削除します（管理者用）")
     async def clear_all(self, interaction: discord.Interaction):
