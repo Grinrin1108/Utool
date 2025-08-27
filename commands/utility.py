@@ -32,5 +32,7 @@ def register_utility_commands(bot):
         if not interaction.user.guild_permissions.manage_messages:
             await interaction.response.send_message("権限がありません。", ephemeral=True)
             return
-        deleted = await interaction.channel.purge(limit=amount)
-        await interaction.response.send_message(f"{len(deleted)} 件削除しました。", ephemeral=True)
+        # 先に応答
+        await interaction.response.send_message(f"{amount} 件削除を実行します…", ephemeral=True)
+        # purge（ここでコマンドメッセージも消える場合はdelay）
+        await interaction.channel.purge(limit=amount)
