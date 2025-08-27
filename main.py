@@ -55,6 +55,7 @@ async def on_error(event_method, *args, **kwargs):
     print(f"Error in {event_method}: {traceback.format_exc()}")
 
 # ===== ユーティリティコマンド =====
+# ユーザー情報
 @bot.command()
 async def userinfo(ctx, member: discord.Member = None):
     member = member or ctx.author
@@ -63,7 +64,9 @@ async def userinfo(ctx, member: discord.Member = None):
     embed.add_field(name="作成日", value=member.created_at.strftime("%Y-%m-%d %H:%M:%S"))
     embed.set_thumbnail(url=member.avatar.url)
     await ctx.send(embed=embed)
+    print(f"userinfo command used by {ctx.author} for {member}")
 
+# サーバー情報
 @bot.command()
 async def serverinfo(ctx):
     guild = ctx.guild
@@ -72,15 +75,19 @@ async def serverinfo(ctx):
     embed.add_field(name="メンバー数", value=guild.member_count)
     embed.set_thumbnail(url=guild.icon.url if guild.icon else None)
     await ctx.send(embed=embed)
+    print(f"serverinfo command used by {ctx.author}")
 
+# アバター表示
 @bot.command()
 async def avatar(ctx, member: discord.Member = None):
     member = member or ctx.author
     embed = discord.Embed(title=f"{member}'s Avatar")
     embed.set_image(url=member.avatar.url)
     await ctx.send(embed=embed)
+    print(f"avatar command used by {ctx.author} for {member}")
 
 # ===== 遊び系コマンド =====
+# さいころ
 @bot.command()
 async def roll(ctx, dice: str):
     try:
@@ -90,7 +97,9 @@ async def roll(ctx, dice: str):
         return
     results = [random.randint(1, limit) for _ in range(rolls)]
     await ctx.send(f"{ctx.author.mention} rolled {dice}: {results} → 合計: {sum(results)}")
+    print(f"roll command used by {ctx.author}")
 
+# 投票作成
 @bot.command()
 async def poll(ctx, question: str, *options):
     if len(options) < 2:
@@ -102,15 +111,19 @@ async def poll(ctx, question: str, *options):
     msg = await ctx.send(embed=embed)
     for i in range(len(options)):
         await msg.add_reaction(emojis[i])
+    print(f"poll command used by {ctx.author}")
 
+# リマインダー
 @bot.command()
 async def remind(ctx, time: str, *, message):
     amount = int(time[:-1])
     unit = time[-1]
     seconds = amount * 60 if unit == "m" else amount * 3600 if unit=="h" else amount
     await ctx.send(f"{ctx.author.mention} リマインダーセット: {message} (あと {time})")
+    print(f"remind command used by {ctx.author}")
     await asyncio.sleep(seconds)
     await ctx.send(f"{ctx.author.mention} リマインダー: {message}")
+    print(f"reminder sent to {ctx.author}")
 
 # ===== 管理系 =====
 @bot.command()
@@ -118,6 +131,7 @@ async def remind(ctx, time: str, *, message):
 async def clear(ctx, amount: int = 5):
     deleted = await ctx.channel.purge(limit=amount)
     await ctx.send(f"{len(deleted)} 件削除しました。", delete_after=5)
+    print(f"clear command used by {ctx.author}")
 
 # ===== 非同期でFlask & Bot同時起動 =====
 if __name__ == "__main__":
