@@ -1,7 +1,7 @@
-# main.py
 import os
 import discord
 from discord.ext import commands
+from discord import app_commands
 from dotenv import load_dotenv
 import asyncio
 import nest_asyncio
@@ -51,7 +51,7 @@ if os.path.exists(CAL_FILE):
     with open(CAL_FILE, "r", encoding="utf-8") as f:
         calendars = json.load(f)
 else:
-    calendars = {}  # {guild_id: [{"summary": str, "datetime": str}, ...]}
+    calendars = {}  # {guild_id: [{"title": str, "datetime": str}, ...]}
 
 def save_calendars():
     with open(CAL_FILE, "w", encoding="utf-8") as f:
@@ -144,42 +144,69 @@ async def clear(interaction: discord.Interaction, amount: int = 5):
     deleted = await interaction.channel.purge(limit=amount)
     await interaction.response.send_message(f"{len(deleted)} 件削除しました。", ephemeral=True)
 
-# ===== カレンダー系（JSON永続化） =====
-@bot.tree.command(name="cal_add", description="新しい予定を追加します")
-async def cal_add(interaction: discord.Interaction, summary: str, date: str, time_str: str = None):
-    await interaction.response.defer()
-    dt_str = f"{date}T{time_str}" if time_str else f"{date}T00:00"
-    try:
-        datetime.fromisoformat(dt_str)
-    except:
-        await interaction.followup.send("❌ 日付形式が不正です。YYYY-MM-DD または YYYY-MM-DD HH:MM")
-        return
-    cal = get_calendar(interaction.guild_id)
-    cal.append({"summary": summary, "datetime": dt_str})
-    save_calendars()
-    await interaction.followup.send(f"✅ 予定を追加しました: {summary} ({dt_str})")
+# ===== カレンダー系（/calグループ） =====
+class Calendar(app_commands.Group):
+    def __init__(self):
+        super().__init__(name="cal", description="カレンダー機能")
 
-@bot.tree.command(name="cal_list", description="今後の予定を表示します")
-async def cal_list(interaction: discord.Interaction, max_results: int = 5):
-    await interaction.response.defer()
-    cal = get_calendar(interaction.guild_id)
-    if not cal:
-        await interaction.followup.send("予定はありません。")
-        return
-    cal_sorted = sorted(cal, key=lambda x: x["datetime"])
-    msg = ""
-    for ev in cal_sorted[:max_results]:
-        msg += f"🗓 {ev['datetime']} — {ev['summary']}\n"
-    await interaction.followup.send(msg)
+    @app_commands.command(name="add", description="予定を追加します")
+    async def add(self, interaction: discord.Interaction, title: str, date: str, time_str: str = None):
+        await interaction.response.defer()
+        dt_str = f"{date}T{time_str}" if time_str else f"{date}T00:00"
+        try: datetime.fromisoformat(dt_str)
+        except:
+            await interaction.followup.send("❌ 日付形式が不正です。YYYY-MM-DD または YYYY-MM-DD HH:MM")
+            return
+        cal = get_calendar(interaction.guild_id)
+        cal.append({"title": title, "datetime": dt_str})
+        save_calendars()
+        await interaction.followup.send(f"✅ 予定を追加しました: {title} ({dt_str})")
 
-@bot.tree.command(name="cal_clear", description="全予定を削除します（管理者用）")
-async def cal_clear(interaction: discord.Interaction):
-    if not interaction.user.guild_permissions.manage_guild:
-        await interaction.response.send_message("権限がありません。", ephemeral=True)
-        return
-    calendars[str(interaction.guild_id)] = []
-    save_calendars()
-    await interaction.response.send_message("✅ 全予定を削除しました", ephemeral=True)
+    @app_commands.command(name="list", description="今後の予定を表示します")
+    async def list_events(self, interaction: discord.Interaction, max_results: int = 5):
+        await interaction.response.defer()
+        cal = get_calendar(interaction.guild_id)
+        if not cal: await interaction.followup.send("予定はありません。"); return
+        cal_sorted = sorted(cal, key=lambda x: x["datetime"])
+        msg = "\n".join([f"🗓 {ev['datetime']} — {ev['title']}" for ev in cal_sorted[:max_results]])
+        await interaction.followup.send(msg)
+
+    @app_commands.command(name="today", description="今日の予定を表示します")
+    async def today(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        cal = get_calendar(interaction.guild_id)
+        today_str = datetime.utcnow().date().isoformat()
+        today_events = [ev for ev in cal if ev["datetime"].startswith(today_str)]
+        if not today_events: await interaction.followup.send("今日の予定はありません。"); return
+        today_events.sort(key=lambda x: x["datetime"])
+        msg = "\n".join([f"🗓 {ev['datetime']} — {ev['title']}" for ev in today_events])
+        await interaction.followup.send(msg)
+
+    @app_commands.command(name="search", description="キーワードで予定を検索します")
+    async def search(self, interaction: discord.Interaction, keyword: str):
+        await interaction.response.defer()
+        cal = get_calendar(interaction.guild_id)
+        matched = [ev for ev in cal if keyword.lower() in ev["title"].lower()]
+        if not matched: await interaction.followup.send("該当する予定はありません。"); return
+        matched.sort(key=lambda x: x["datetime"])
+        msg = "\n".join([f"🗓 {ev['datetime']} — {ev['title']}" for ev in matched])
+        await interaction.followup.send(msg)
+
+    @app_commands.command(name="remove", description="指定した予定を削除します（管理者専用）")
+    async def remove(self, interaction: discord.Interaction, index: int):
+        if not interaction.user.guild_permissions.manage_guild:
+            await interaction.response.send_message("権限がありません。", ephemeral=True)
+            return
+        cal = get_calendar(interaction.guild_id)
+        if index < 1 or index > len(cal):
+            await interaction.response.send_message("❌ 無効な番号です", ephemeral=True)
+            return
+        removed = cal.pop(index - 1)
+        save_calendars()
+        await interaction.response.send_message(f"✅ 予定を削除しました: {removed['title']} ({removed['datetime']})", ephemeral=True)
+
+# グループ登録
+bot.tree.add_command(Calendar())
 
 # ===== 非同期でFlask & Bot同時起動 =====
 if __name__ == "__main__":
