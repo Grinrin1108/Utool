@@ -144,12 +144,12 @@ async def clear(interaction: discord.Interaction, amount: int = 5):
     deleted = await interaction.channel.purge(limit=amount)
     await interaction.response.send_message(f"{len(deleted)} 件削除しました。", ephemeral=True)
 
-# ===== カレンダー機能 =====
+# ===== カレンダー・Todo機能 =====
 class Calendar(app_commands.Group):
     def __init__(self):
         super().__init__(name="cal", description="予定・Todo一括管理")
 
-    # ---------- 予定操作 ----------
+    # ---------- 予定 ----------
     @app_commands.command(name="add", description="予定を追加します")
     async def add(self, interaction: discord.Interaction, title: str, date: str, time_str: str = None):
         await interaction.response.defer()
@@ -170,14 +170,28 @@ class Calendar(app_commands.Group):
         if not items:
             await interaction.followup.send("データはありません。")
             return
+
         embed = discord.Embed(title=title, color=0x00ff99 if not is_todo else 0x9b59b6)
+        now = datetime.now()
+
         for i, item in enumerate(items, start=1):
             if is_todo:
                 status = "✅" if item["done"] else "❌"
-                embed.add_field(name=f"{i}. {status} {item['content']}", value=f"追加: {item['added_at']}", inline=False)
+                due_text = ""
+                color = 0x9b59b6  # 紫: 未完了
+                if item.get("due"):
+                    due_dt = datetime.fromisoformat(item["due"])
+                    due_text = f"\n期限: {due_dt.strftime('%Y-%m-%d %H:%M')}"
+                    if not item["done"] and due_dt < now:
+                        color = 0xe74c3c  # 赤: 期限切れ
+                        due_text += " ⚠️ 期限切れ"
+                if item["done"]:
+                    color = 0x00ff00  # 緑: 完了
+                embed.add_field(name=f"{i}. {status} {item['content']}", value=f"追加: {item['added_at']}{due_text}", inline=False)
             else:
                 dt = datetime.fromisoformat(item["datetime"]).strftime("%Y-%m-%d %H:%M")
                 embed.add_field(name=f"{i}. {item['title']}", value=f"🗓 {dt}", inline=False)
+
         await interaction.followup.send(embed=embed)
 
     @app_commands.command(name="list", description="今後の予定を表示します")
@@ -220,14 +234,32 @@ class Calendar(app_commands.Group):
         save_data()
         await interaction.response.send_message("✅ 全予定を削除しました", ephemeral=True)
 
-    # ---------- Todo操作 ----------
-    @app_commands.command(name="todo_add", description="Todoを追加します")
-    async def todo_add(self, interaction: discord.Interaction, content: str):
+    # ---------- Todo ----------
+    @app_commands.command(name="todo_add", description="Todoを追加します（期限指定可）")
+    async def todo_add(self, interaction: discord.Interaction, content: str, due_date: str = None, due_time: str = None):
         await interaction.response.defer()
         guild_data = get_guild_data(interaction.guild_id)
-        guild_data["todos"].append({"content": content, "done": False, "added_at": datetime.now().isoformat(), "done_at": None})
+        due_iso = None
+        if due_date:
+            dt_str = f"{due_date}T{due_time}" if due_time else f"{due_date}T23:59"
+            try:
+                due_dt = datetime.fromisoformat(dt_str)
+                due_iso = due_dt.isoformat()
+            except:
+                await interaction.followup.send("❌ 日付形式が不正です。YYYY-MM-DD または YYYY-MM-DD HH:MM")
+                return
+
+        guild_data["todos"].append({
+            "content": content,
+            "done": False,
+            "added_at": datetime.now().isoformat(),
+            "done_at": None,
+            "due": due_iso
+        })
         save_data()
         embed = discord.Embed(title="Todo追加", description=content, color=0x00ff00)
+        if due_iso:
+            embed.add_field(name="期限", value=due_dt.strftime("%Y-%m-%d %H:%M"))
         await interaction.followup.send(embed=embed)
 
     @app_commands.command(name="todo_list", description="Todo一覧を表示します")
