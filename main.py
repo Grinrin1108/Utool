@@ -67,6 +67,8 @@ def get_guild_data(guild_id):
 @bot.event
 async def on_ready():
     await bot.tree.sync()
+    activity = discord.CustomActivity(name="いたずら中😈")
+    await bot.change_presence(activity=activity)
     print(f"Logged in as {bot.user} (slash commands synced)")
 
 # ===== ユーティリティ系 =====
