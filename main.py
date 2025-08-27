@@ -11,6 +11,7 @@ from flask import Flask
 import threading
 import requests
 import time
+import json
 
 # Render用非同期調整
 nest_asyncio.apply()
@@ -44,10 +45,20 @@ def keep_alive():
             pass
         time.sleep(300)
 
-# ===== サーバー別カレンダー管理 =====
-calendars = {}  # {guild_id: [{"summary": str, "datetime": str}, ...]}
+# ===== JSON永続化カレンダー =====
+CAL_FILE = "calendars.json"
+if os.path.exists(CAL_FILE):
+    with open(CAL_FILE, "r", encoding="utf-8") as f:
+        calendars = json.load(f)
+else:
+    calendars = {}  # {guild_id: [{"summary": str, "datetime": str}, ...]}
+
+def save_calendars():
+    with open(CAL_FILE, "w", encoding="utf-8") as f:
+        json.dump(calendars, f, ensure_ascii=False, indent=2)
 
 def get_calendar(guild_id):
+    guild_id = str(guild_id)
     if guild_id not in calendars:
         calendars[guild_id] = []
     return calendars[guild_id]
@@ -133,7 +144,7 @@ async def clear(interaction: discord.Interaction, amount: int = 5):
     deleted = await interaction.channel.purge(limit=amount)
     await interaction.response.send_message(f"{len(deleted)} 件削除しました。", ephemeral=True)
 
-# ===== カレンダー系 =====
+# ===== カレンダー系（JSON永続化） =====
 @bot.tree.command(name="cal_add", description="新しい予定を追加します")
 async def cal_add(interaction: discord.Interaction, summary: str, date: str, time_str: str = None):
     await interaction.response.defer()
@@ -141,10 +152,11 @@ async def cal_add(interaction: discord.Interaction, summary: str, date: str, tim
     try:
         datetime.fromisoformat(dt_str)
     except:
-        await interaction.followup.send("❌ 日付形式が不正です。YYYY-MM-DD または YYYY-MM-DD HH:MM の形式で入力してください")
+        await interaction.followup.send("❌ 日付形式が不正です。YYYY-MM-DD または YYYY-MM-DD HH:MM")
         return
     cal = get_calendar(interaction.guild_id)
     cal.append({"summary": summary, "datetime": dt_str})
+    save_calendars()
     await interaction.followup.send(f"✅ 予定を追加しました: {summary} ({dt_str})")
 
 @bot.tree.command(name="cal_list", description="今後の予定を表示します")
@@ -165,7 +177,8 @@ async def cal_clear(interaction: discord.Interaction):
     if not interaction.user.guild_permissions.manage_guild:
         await interaction.response.send_message("権限がありません。", ephemeral=True)
         return
-    calendars[interaction.guild_id] = []
+    calendars[str(interaction.guild_id)] = []
+    save_calendars()
     await interaction.response.send_message("✅ 全予定を削除しました", ephemeral=True)
 
 # ===== 非同期でFlask & Bot同時起動 =====
