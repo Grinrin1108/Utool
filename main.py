@@ -4,6 +4,7 @@ from discord.ext import commands
 from discord import app_commands
 from datetime import datetime
 from flask import Flask
+from dotenv import load_dotenv
 
 nest_asyncio.apply()
 load_dotenv()
