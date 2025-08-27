@@ -163,12 +163,12 @@ class Calendar(app_commands.Group):
         await interaction.followup.send(f"✅ 予定を追加しました: {title} ({dt_str})")
 
     @app_commands.command(name="list", description="今後の予定を表示します")
-    async def list_events(self, interaction: discord.Interaction, max_results: int = 5):
+    async def list_events(self, interaction: discord.Interaction, max_results: int = 10):
         await interaction.response.defer()
         cal = get_calendar(interaction.guild_id)
         if not cal: await interaction.followup.send("予定はありません。"); return
         cal_sorted = sorted(cal, key=lambda x: x["datetime"])
-        msg = "\n".join([f"🗓 {ev['datetime']} — {ev['title']}" for ev in cal_sorted[:max_results]])
+        msg = "\n".join([f"{i+1}. 🗓 {ev['datetime']} — {ev['title']}" for i, ev in enumerate(cal_sorted[:max_results])])
         await interaction.followup.send(msg)
 
     @app_commands.command(name="today", description="今日の予定を表示します")
@@ -179,7 +179,7 @@ class Calendar(app_commands.Group):
         today_events = [ev for ev in cal if ev["datetime"].startswith(today_str)]
         if not today_events: await interaction.followup.send("今日の予定はありません。"); return
         today_events.sort(key=lambda x: x["datetime"])
-        msg = "\n".join([f"🗓 {ev['datetime']} — {ev['title']}" for ev in today_events])
+        msg = "\n".join([f"{i+1}. 🗓 {ev['datetime']} — {ev['title']}" for i, ev in enumerate(today_events)])
         await interaction.followup.send(msg)
 
     @app_commands.command(name="search", description="キーワードで予定を検索します")
@@ -189,23 +189,29 @@ class Calendar(app_commands.Group):
         matched = [ev for ev in cal if keyword.lower() in ev["title"].lower()]
         if not matched: await interaction.followup.send("該当する予定はありません。"); return
         matched.sort(key=lambda x: x["datetime"])
-        msg = "\n".join([f"🗓 {ev['datetime']} — {ev['title']}" for ev in matched])
+        msg = "\n".join([f"{i+1}. 🗓 {ev['datetime']} — {ev['title']}" for i, ev in enumerate(matched)])
         await interaction.followup.send(msg)
 
-    @app_commands.command(name="remove", description="指定した予定を削除します（管理者専用）")
+    @app_commands.command(name="remove", description="番号で予定を削除します")
     async def remove(self, interaction: discord.Interaction, index: int):
+        await interaction.response.defer()
+        cal = get_calendar(interaction.guild_id)
+        if not cal or index < 1 or index > len(cal):
+            await interaction.followup.send("❌ 番号が不正です。")
+            return
+        removed = cal.pop(index-1)
+        save_calendars()
+        await interaction.followup.send(f"✅ 削除しました: {removed['title']} ({removed['datetime']})")
+
+    @app_commands.command(name="clear", description="全予定を削除します（管理者用）")
+    async def clear_all(self, interaction: discord.Interaction):
         if not interaction.user.guild_permissions.manage_guild:
             await interaction.response.send_message("権限がありません。", ephemeral=True)
             return
-        cal = get_calendar(interaction.guild_id)
-        if index < 1 or index > len(cal):
-            await interaction.response.send_message("❌ 無効な番号です", ephemeral=True)
-            return
-        removed = cal.pop(index - 1)
+        calendars[str(interaction.guild_id)] = []
         save_calendars()
-        await interaction.response.send_message(f"✅ 予定を削除しました: {removed['title']} ({removed['datetime']})", ephemeral=True)
+        await interaction.response.send_message("✅ 全予定を削除しました", ephemeral=True)
 
-# グループ登録
 bot.tree.add_command(Calendar())
 
 # ===== 非同期でFlask & Bot同時起動 =====
