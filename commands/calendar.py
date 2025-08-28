@@ -154,6 +154,13 @@ def register_calendar_commands(bot, data_manager):
                 embed.add_field(name="期限", value=due_dt.strftime("%Y-%m-%d %H:%M"))
             await interaction.followup.send(embed=embed)
 
+        @app_commands.command(name="todo_list", description="Todoリストを表示します")
+        async def todo_list(self, interaction: discord.Interaction, max_results: int = 20):
+            await interaction.response.defer()
+            guild_data = data_manager.get_guild_data(interaction.guild_id)
+            todos = self._sorted_todos(guild_data)[:max_results]
+            await self._send_embed_list(interaction, todos, "Todoリスト", is_todo=True)
+
         @app_commands.command(name="todo_done", description="Todoを完了にします（表示順基準）")
         async def todo_done(self, interaction: discord.Interaction, index: int):
             await interaction.response.defer()
