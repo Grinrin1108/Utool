@@ -7,22 +7,29 @@ from flask import Flask
 import threading
 import requests
 import time
-import json
 
-# Bot初期化
+# -----------------------------
+# 環境変数ロード
+# -----------------------------
 nest_asyncio.apply()
 load_dotenv()
 TOKEN = os.getenv("TOKEN")
 PORT = int(os.getenv("PORT", 10000))
 SELF_URL = os.getenv("SELF_URL")
 
+# -----------------------------
+# Bot 初期化
+# -----------------------------
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# Flask
+# -----------------------------
+# Flaskサーバー（ヘルスチェック）
+# -----------------------------
 app = Flask(__name__)
+
 @app.route("/")
 def health():
     return "Bot is alive!"
@@ -30,7 +37,6 @@ def health():
 def run_flask():
     app.run(host="0.0.0.0", port=PORT)
 
-# Keep alive
 def keep_alive():
     while True:
         try:
@@ -40,42 +46,28 @@ def keep_alive():
             pass
         time.sleep(300)
 
-# JSON永続化
-CAL_FILE = "calendars.json"
-if os.path.exists(CAL_FILE):
-    with open(CAL_FILE, "r", encoding="utf-8") as f:
-        data = json.load(f)
-else:
-    data = {}
+# -----------------------------
+# Cogロード
+# -----------------------------
+async def load_cogs():
+    await bot.load_extension("commands.calendar")
+    await bot.load_extension("commands.utility")
+    await bot.load_extension("commands.fun")
 
-def save_data():
-    with open(CAL_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-def get_guild_data(guild_id):
-    guild_id = str(guild_id)
-    if guild_id not in data:
-        data[guild_id] = {"events": [], "todos": []}
-    return data[guild_id]
-
+# -----------------------------
 # Bot ready
+# -----------------------------
 @bot.event
 async def on_ready():
+    await load_cogs()
     await bot.tree.sync()
     activity = discord.CustomActivity(name="いたずら中😈")
     await bot.change_presence(activity=activity)
     print(f"Logged in as {bot.user} (slash commands synced)")
 
-# コマンドのロード
-from commands.utility import register_utility_commands
-from commands.fun import register_fun_commands
-from commands.calendar import register_calendar_commands
-
-register_utility_commands(bot)
-register_fun_commands(bot)
-register_calendar_commands(bot, get_guild_data, save_data)
-
+# -----------------------------
 # Bot起動
+# -----------------------------
 if __name__ == "__main__":
     threading.Thread(target=run_flask, daemon=True).start()
     threading.Thread(target=keep_alive, daemon=True).start()
