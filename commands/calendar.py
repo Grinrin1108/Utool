@@ -161,6 +161,48 @@ def register_calendar_commands(bot, data_manager):
             todos = self._sorted_todos(guild_data)[:max_results]
             await self._send_embed_list(interaction, todos, "Todoリスト", is_todo=True)
 
+        @app_commands.command(name="todo_remove", description="番号でTodoを削除します（表示順基準）")
+        async def todo_remove(self, interaction: discord.Interaction, index: int):
+            await interaction.response.defer()
+            guild_data = data_manager.get_guild_data(interaction.guild_id)
+            todos_sorted = self._sorted_todos(guild_data)
+
+            if index < 1 or index > len(todos_sorted):
+                await interaction.followup.send("❌ 番号が不正です。")
+                return
+
+            removed = todos_sorted.pop(index - 1)
+            guild_data["todos"] = self._sorted_todos(guild_data)
+            await data_manager.save_all()
+
+            embed = discord.Embed(title="Todo削除", description=removed["content"], color=0xe74c3c)
+            if removed.get("due"):
+                try:
+                    due_dt = datetime.fromisoformat(removed["due"]).astimezone(JST).strftime("%Y-%m-%d %H:%M")
+                    embed.add_field(name="期限", value=due_dt)
+                except Exception:
+                    pass
+            await interaction.followup.send(embed=embed)
+
+        @app_commands.command(name="todo_clear", description="完了済みのTodoをすべて削除します")
+        async def todo_clear(self, interaction: discord.Interaction):
+            await interaction.response.defer()
+            guild_data = data_manager.get_guild_data(interaction.guild_id)
+            before_count = len(guild_data["todos"])
+            guild_data["todos"] = [td for td in guild_data["todos"] if not td["done"]]
+            cleared_count = before_count - len(guild_data["todos"])
+            await data_manager.save_all()
+
+            await interaction.followup.send(f"✅ 完了済みのTodoを {cleared_count} 件削除しました。")
+
+        @app_commands.command(name="todo_today", description="今日のTodoを表示します")
+        async def todo_today(self, interaction: discord.Interaction):
+            await interaction.response.defer()
+            guild_data = data_manager.get_guild_data(interaction.guild_id)
+            today_str = datetime.now(JST).date().isoformat()
+            today_todos = [td for td in self._sorted_todos(guild_data) if td.get("due", "").startswith(today_str) and not td["done"]]
+            await self._send_embed_list(interaction, today_todos, "今日のTodo", is_todo=True)
+
         @app_commands.command(name="todo_done", description="Todoを完了にします（表示順基準）")
         async def todo_done(self, interaction: discord.Interaction, index: int):
             await interaction.response.defer()
