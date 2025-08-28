@@ -1,186 +1,178 @@
-import discord
+# commands/calendar.py
 from discord import app_commands
-from discord.ext import commands
-import os
-import json
-from datetime import datetime, timezone, timedelta
+import discord
+from datetime import datetime, date, timedelta, timezone
 
-DATA_FILE = "data/calendar_todo.json"
+# ★ JST タイムゾーン定義
 JST = timezone(timedelta(hours=9))
 
-# -----------------------------
-# データ管理ユーティリティ
-# -----------------------------
-def load_data():
-    if not os.path.exists(DATA_FILE):
-        return {"calendar": {}, "todo": {}}
-    with open(DATA_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+def register_calendar_commands(bot, get_guild_data, save_data):
+    class Calendar(app_commands.Group):
+        def __init__(self):
+            super().__init__(name="cal", description="予定・Todo一括管理")
 
-def save_data(data):
-    os.makedirs(os.path.dirname(DATA_FILE), exist_ok=True)
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+        # ===== 内部ユーティリティ =====
+        def _sorted_events(self, guild_data):
+            return sorted(guild_data["events"], key=lambda x: datetime.fromisoformat(x["datetime"]))
 
-# -----------------------------
-# Cog本体
-# -----------------------------
-class Calendar(commands.Cog):
-    def __init__(self, bot: commands.Bot):
-        self.bot = bot
-        self.data = load_data()
+        def _sorted_todos(self, guild_data):
+            def key(todo):
+                due_iso = todo.get("due")
+                if due_iso:
+                    try:
+                        d = datetime.fromisoformat(due_iso)
+                    except Exception:
+                        d = datetime.max
+                    return (0, d, todo.get("added_at", ""))
+                else:
+                    return (1, datetime.max, todo.get("added_at", ""))
+            return sorted(guild_data["todos"], key=key)
 
-    # -------------------------
-    # Calendar系
-    # -------------------------
-    @app_commands.command(name="cal_add", description="予定を追加します")
-    async def cal_add(self, interaction: discord.Interaction, title: str, date: str, time: str = "00:00"):
-        await interaction.response.defer()
-
-        try:
-            dt = datetime.strptime(f"{date} {time}", "%Y-%m-%d %H:%M").replace(tzinfo=JST)
-            iso_time = dt.isoformat()
-        except ValueError:
-            await interaction.followup.send("❌ 日付または時間の形式が正しくありません（例: 2025-08-28 14:00）")
-            return
-
-        guild_id = str(interaction.guild_id)
-        self.data.setdefault("calendar", {}).setdefault(guild_id, []).append({
-            "title": title,
-            "datetime": iso_time
-        })
-        save_data(self.data)
-
-        await interaction.followup.send(f"✅ 予定を追加しました: **{title}** （{dt.strftime('%Y-%m-%d %H:%M')} JST）")
-
-    @app_commands.command(name="cal_list", description="予定一覧を表示します")
-    async def cal_list(self, interaction: discord.Interaction):
-        await interaction.response.defer()
-        guild_id = str(interaction.guild_id)
-        events = self.data.get("calendar", {}).get(guild_id, [])
-
-        if not events:
-            await interaction.followup.send("📅 登録された予定はありません。")
-            return
-
-        # ソート（日付順）
-        events.sort(key=lambda e: e["datetime"])
-
-        embed = discord.Embed(title="📅 予定一覧", color=discord.Color.blue())
-        for i, e in enumerate(events, start=1):
-            dt = datetime.fromisoformat(e["datetime"]).astimezone(JST)
-            embed.add_field(name=f"{i}. {e['title']}", value=dt.strftime("%Y-%m-%d %H:%M JST"), inline=False)
-
-        await interaction.followup.send(embed=embed)
-
-    @app_commands.command(name="cal_remove", description="予定を削除します")
-    async def cal_remove(self, interaction: discord.Interaction, index: int):
-        await interaction.response.defer()
-        guild_id = str(interaction.guild_id)
-        events = self.data.get("calendar", {}).get(guild_id, [])
-
-        if 0 < index <= len(events):
-            removed = events.pop(index - 1)
-            save_data(self.data)
-            await interaction.followup.send(f"🗑️ 予定を削除しました: **{removed['title']}**")
-        else:
-            await interaction.followup.send("❌ 指定された番号の予定が存在しません。")
-
-    # -------------------------
-    # Todo系
-    # -------------------------
-    @app_commands.command(name="todo_add", description="Todoを追加します（締め切りは任意）")
-    async def todo_add(self, interaction: discord.Interaction, task: str, deadline: str = None):
-        await interaction.response.defer()
-        guild_id = str(interaction.guild_id)
-
-        deadline_iso = None
-        if deadline:
-            try:
-                dt = datetime.strptime(deadline, "%Y-%m-%d %H:%M").replace(tzinfo=JST)
-                deadline_iso = dt.isoformat()
-            except ValueError:
-                await interaction.followup.send("❌ 締め切りの形式が正しくありません（例: 2025-08-28 18:00）")
+        async def _send_embed_list(self, interaction, items, title, is_todo=False):
+            if not items:
+                await interaction.followup.send("データはありません。")
                 return
 
-        self.data.setdefault("todo", {}).setdefault(guild_id, []).append({
-            "task": task,
-            "deadline": deadline_iso,
-            "done": False
-        })
-        save_data(self.data)
+            embed = discord.Embed(title=title, color=0x00ff99 if not is_todo else 0x9b59b6)
+            now = datetime.now(JST)  # ★ 現在時刻も JST
 
-        msg = f"✅ Todoを追加しました: **{task}**"
-        if deadline_iso:
-            msg += f" （締め切り {dt.strftime('%Y-%m-%d %H:%M JST')}）"
-        await interaction.followup.send(msg)
+            for i, item in enumerate(items, start=1):
+                if is_todo:
+                    status = "✅" if item["done"] else "❌"
+                    due_text = ""
+                    if item.get("due"):
+                        try:
+                            due_dt = datetime.fromisoformat(item["due"]).astimezone(JST)  # ★ JST化
+                            due_text = f"\n期限: {due_dt.strftime('%Y-%m-%d %H:%M')}"
+                            if not item["done"] and due_dt < now:
+                                due_text += " ⚠️ 期限切れ"
+                        except Exception:
+                            due_text = "\n期限: （形式不正）"
+                    added = item.get("added_at", "")
+                    if added:
+                        try:
+                            added = datetime.fromisoformat(added).astimezone(JST).strftime('%Y-%m-%d %H:%M')
+                        except Exception:
+                            pass
+                    embed.add_field(
+                        name=f"{i}. {status} {item['content']}",
+                        value=f"追加: {added}{due_text}",
+                        inline=False
+                    )
+                else:
+                    dt = datetime.fromisoformat(item["datetime"]).astimezone(JST)  # ★ JST化
+                    embed.add_field(
+                        name=f"{i}. {item['title']}",
+                        value=f"🗓 {dt.strftime('%Y-%m-%d %H:%M')}",
+                        inline=False
+                    )
 
-    @app_commands.command(name="todo_list", description="Todo一覧を表示します")
-    async def todo_list(self, interaction: discord.Interaction):
-        await interaction.response.defer()
-        guild_id = str(interaction.guild_id)
-        todos = self.data.get("todo", {}).get(guild_id, [])
+            await interaction.followup.send(embed=embed)
 
-        if not todos:
-            await interaction.followup.send("📝 登録されたTodoはありません。")
-            return
+        # ===== 予定 =====
+        @app_commands.command(name="add", description="予定を追加します")
+        async def add(self, interaction: discord.Interaction, title: str, date: str, time_str: str = None):
+            await interaction.response.defer()
+            dt_str = f"{date}T{time_str}" if time_str else f"{date}T00:00"
+            try:
+                dt = datetime.fromisoformat(dt_str).replace(tzinfo=JST)  # ★ JST付きで保存
+            except Exception:
+                await interaction.followup.send("❌ 日付形式が不正です。YYYY-MM-DD または YYYY-MM-DD HH:MM")
+                return
 
-        # ソート（期限ありを前、期限なしを後）
-        def sort_key(t):
-            return (t["deadline"] is None, t["deadline"] or "")
+            guild_data = get_guild_data(interaction.guild_id)
+            guild_data["events"].append({"title": title, "datetime": dt.isoformat()})
+            guild_data["events"] = self._sorted_events(guild_data)
+            save_data()
 
-        todos.sort(key=sort_key)
+            embed = discord.Embed(title="予定追加", description=title, color=0x00ff00)
+            embed.add_field(name="日時", value=dt.strftime("%Y-%m-%d %H:%M"))
+            await interaction.followup.send(embed=embed)
 
-        embed = discord.Embed(title="📝 Todo一覧", color=discord.Color.green())
-        now = datetime.now(JST)
+        @app_commands.command(name="list", description="今後の予定を表示します")
+        async def list_events(self, interaction: discord.Interaction, max_results: int = 10):
+            await interaction.response.defer()
+            guild_data = get_guild_data(interaction.guild_id)
+            events = self._sorted_events(guild_data)[:max_results]
+            await self._send_embed_list(interaction, events, "今後の予定")
 
-        for i, t in enumerate(todos, start=1):
-            status = "✅ 完了" if t["done"] else "⏳ 未完了"
-            if t["deadline"]:
-                dt = datetime.fromisoformat(t["deadline"]).astimezone(JST)
-                if not t["done"] and dt < now:
-                    status += " ⚠️期限切れ"
-                deadline_str = dt.strftime("%Y-%m-%d %H:%M JST")
-            else:
-                deadline_str = "なし"
+        @app_commands.command(name="today", description="今日の予定を表示します")
+        async def today(self, interaction: discord.Interaction):
+            await interaction.response.defer()
+            guild_data = get_guild_data(interaction.guild_id)
+            today_str = datetime.now(JST).date().isoformat()  # ★ JST基準で今日を決定
+            today_events = [ev for ev in self._sorted_events(guild_data) if ev["datetime"].startswith(today_str)]
+            await self._send_embed_list(interaction, today_events, "今日の予定")
 
-            embed.add_field(
-                name=f"{i}. {t['task']}",
-                value=f"状態: {status}\n締め切り: {deadline_str}",
-                inline=False
-            )
+        @app_commands.command(name="remove", description="番号で予定を削除します（表示順基準）")
+        async def remove(self, interaction: discord.Interaction, index: int):
+            await interaction.response.defer()
+            guild_data = get_guild_data(interaction.guild_id)
+            events_sorted = self._sorted_events(guild_data)
 
-        await interaction.followup.send(embed=embed)
+            if index < 1 or index > len(events_sorted):
+                await interaction.followup.send("❌ 番号が不正です。")
+                return
 
-    @app_commands.command(name="todo_done", description="Todoを完了にします")
-    async def todo_done(self, interaction: discord.Interaction, index: int):
-        await interaction.response.defer()
-        guild_id = str(interaction.guild_id)
-        todos = self.data.get("todo", {}).get(guild_id, [])
+            removed = events_sorted.pop(index - 1)
+            guild_data["events"] = events_sorted
+            save_data()
 
-        if 0 < index <= len(todos):
-            todos[index - 1]["done"] = True
-            save_data(self.data)
-            await interaction.followup.send(f"✅ Todoを完了にしました: **{todos[index-1]['task']}**")
-        else:
-            await interaction.followup.send("❌ 指定された番号のTodoが存在しません。")
+            dt = datetime.fromisoformat(removed["datetime"]).astimezone(JST).strftime("%Y-%m-%d %H:%M")  # ★ JST
+            embed = discord.Embed(title="予定削除", description=removed["title"], color=0xe74c3c)
+            embed.add_field(name="日時", value=dt)
+            await interaction.followup.send(embed=embed)
 
-    @app_commands.command(name="todo_remove", description="Todoを削除します")
-    async def todo_remove(self, interaction: discord.Interaction, index: int):
-        await interaction.response.defer()
-        guild_id = str(interaction.guild_id)
-        todos = self.data.get("todo", {}).get(guild_id, [])
+        # ===== Todo =====
+        @app_commands.command(name="todo_add", description="Todoを追加します（期限指定可）")
+        async def todo_add(self, interaction: discord.Interaction, content: str, due_date: str = None, due_time: str = None):
+            await interaction.response.defer()
+            guild_data = get_guild_data(interaction.guild_id)
 
-        if 0 < index <= len(todos):
-            removed = todos.pop(index - 1)
-            save_data(self.data)
-            await interaction.followup.send(f"🗑️ Todoを削除しました: **{removed['task']}**")
-        else:
-            await interaction.followup.send("❌ 指定された番号のTodoが存在しません。")
+            due_iso = None
+            due_dt = None
+            if due_date:
+                dt_str = f"{due_date}T{due_time}" if due_time else f"{due_date}T23:59"
+                try:
+                    due_dt = datetime.fromisoformat(dt_str).replace(tzinfo=JST)  # ★ JST
+                    due_iso = due_dt.isoformat()
+                except Exception:
+                    await interaction.followup.send("❌ 日付形式が不正です。YYYY-MM-DD または YYYY-MM-DD HH:MM")
+                    return
 
+            guild_data["todos"].append({
+                "content": content,
+                "done": False,
+                "added_at": datetime.now(JST).isoformat(),  # ★ JST
+                "done_at": None,
+                "due": due_iso
+            })
+            guild_data["todos"] = self._sorted_todos(guild_data)
+            save_data()
 
-# -----------------------------
-# セットアップ
-# -----------------------------
-async def setup(bot: commands.Bot):
-    await bot.add_cog(Calendar(bot))
+            embed = discord.Embed(title="Todo追加", description=content, color=0x00ff00)
+            if due_dt:
+                embed.add_field(name="期限", value=due_dt.strftime("%Y-%m-%d %H:%M"))
+            await interaction.followup.send(embed=embed)
+
+        @app_commands.command(name="todo_done", description="Todoを完了にします（表示順基準）")
+        async def todo_done(self, interaction: discord.Interaction, index: int):
+            await interaction.response.defer()
+            guild_data = get_guild_data(interaction.guild_id)
+            todos_sorted = self._sorted_todos(guild_data)
+
+            if index < 1 or index > len(todos_sorted):
+                await interaction.followup.send("❌ 番号が不正です。")
+                return
+
+            todo = todos_sorted[index - 1]
+            todo["done"] = True
+            todo["done_at"] = datetime.now(JST).isoformat()  # ★ JST
+            guild_data["todos"] = self._sorted_todos(guild_data)
+            save_data()
+
+            embed = discord.Embed(title="Todo完了", description=todo["content"], color=0x00ff00)
+            embed.add_field(name="完了時刻", value=todo["done_at"])
+            await interaction.followup.send(embed=embed)
+
+    bot.tree.add_command(Calendar())
