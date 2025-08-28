@@ -6,7 +6,7 @@ import asyncio
 # JST タイムゾーン
 JST = timedelta(hours=9)
 
-def register_reminder_commands(bot):
+def register_reminder_commands(bot, data_manager):
     @bot.tree.command(name="remind", description="リマインダーを設定します (例: 10s / 5m / 1h)")
     async def remind(interaction: discord.Interaction, time_str: str, message: str):
         await interaction.response.defer()

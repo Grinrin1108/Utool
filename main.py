@@ -9,7 +9,7 @@ import requests
 import time
 
 from utils.data_manager import DataManager
-from commands import utility, fun, calendar
+from commands import utility, fun, calendar, reminder
 
 # --------------------------------
 # 初期化
@@ -64,6 +64,7 @@ async def on_ready():
     utility.register_utility_commands(bot)
     fun.register_fun_commands(bot)
     calendar.register_calendar_commands(bot, data_manager)
+    reminder.register_reminder_commands(bot, data_manager)
 
     await bot.tree.sync()
     activity = discord.CustomActivity(name="いたずら中😈")
