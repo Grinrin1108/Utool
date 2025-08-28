@@ -172,7 +172,7 @@ def register_calendar_commands(bot, data_manager):
                 return
 
             removed = todos_sorted.pop(index - 1)
-            guild_data["todos"] = self._sorted_todos(guild_data)
+            guild_data["todos"] = todos_sorted  # ←ここを修正
             await data_manager.save_all()
 
             embed = discord.Embed(title="Todo削除", description=removed["content"], color=0xe74c3c)
