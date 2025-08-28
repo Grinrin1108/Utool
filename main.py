@@ -1,4 +1,3 @@
-# main.py
 import os
 import discord
 from discord.ext import commands
@@ -8,16 +7,19 @@ from flask import Flask
 import threading
 import requests
 import time
-import json
+
+from utils.data_manager import DataManager
+from commands import utility, fun, calendar
 
 # --------------------------------
-# Bot初期化
+# 初期化
 # --------------------------------
 nest_asyncio.apply()
 load_dotenv()
 TOKEN = os.getenv("TOKEN")
 PORT = int(os.getenv("PORT", 10000))
 SELF_URL = os.getenv("SELF_URL")
+DATA_CHANNEL_ID = int(os.getenv("DATA_CHANNEL_ID", 0))
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -46,39 +48,22 @@ def keep_alive():
         time.sleep(300)
 
 # --------------------------------
-# JSON永続化
+# DataManager
 # --------------------------------
-CAL_FILE = "calendars.json"
-if os.path.exists(CAL_FILE):
-    with open(CAL_FILE, "r", encoding="utf-8") as f:
-        data = json.load(f)
-else:
-    data = {}
-
-def save_data():
-    with open(CAL_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-def get_guild_data(guild_id):
-    guild_id = str(guild_id)
-    if guild_id not in data:
-        data[guild_id] = {"events": [], "todos": []}
-    return data[guild_id]
-
-# --------------------------------
-# コマンドのインポート
-# --------------------------------
-from commands import utility, fun, calendar
+data_manager = DataManager(bot, DATA_CHANNEL_ID)
 
 # --------------------------------
 # Bot ready
 # --------------------------------
 @bot.event
 async def on_ready():
+    # データをロード
+    await data_manager.load_files()
+
     # コマンド登録
     utility.register_utility_commands(bot)
     fun.register_fun_commands(bot)
-    calendar.register_calendar_commands(bot, get_guild_data, save_data)
+    calendar.register_calendar_commands(bot, data_manager)
 
     await bot.tree.sync()
     activity = discord.CustomActivity(name="いたずら中😈")
