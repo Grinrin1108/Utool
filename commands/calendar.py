@@ -215,12 +215,14 @@ def register_calendar_commands(bot, data_manager):
 
             todo = todos_sorted[index - 1]
             todo["done"] = True
-            todo["done_at"] = datetime.now(JST).isoformat()
+            done_at_dt = datetime.now(JST)
+            todo["done_at"] = done_at_dt.isoformat()
             guild_data["todos"] = self._sorted_todos(guild_data)
             await data_manager.save_all()
 
             embed = discord.Embed(title="Todo完了", description=todo["content"], color=0x00ff00)
-            embed.add_field(name="完了時刻", value=todo["done_at"])
+            # ↓ここで表示形式を修正
+            embed.add_field(name="完了時刻", value=done_at_dt.strftime("%Y-%m-%d %H:%M"))
             await interaction.followup.send(embed=embed)
 
     bot.tree.add_command(Calendar())
