@@ -103,7 +103,7 @@ def register_reminder_commands(bot, data_manager):
             if not daily and not weekly:
                 embed.description = "登録されている定期リマインダーはありません。"
 
-            await interaction.response.send_message(embed=embed, ephemeral=True)
+            await interaction.response.send_message(embed=embed)
 
         # ===== /rem remove =====
         @app_commands.command(name="remove", description="定期リマインダーを削除 (ID指定)")
