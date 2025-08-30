@@ -122,6 +122,36 @@ def register_calendar_commands(bot, data_manager):
             embed.add_field(name="日時", value=dt)
             await interaction.followup.send(embed=embed)
 
+        @app_commands.command(name="edit", description="予定を修正します（表示順基準）")
+        async def edit(self, interaction: discord.Interaction, index: int, new_title: str, new_date: str = None, new_time: str = None):
+            await interaction.response.defer()
+            guild_data = data_manager.get_guild_data(interaction.guild_id)
+            events_sorted = self._sorted_events(guild_data)
+
+            if index < 1 or index > len(events_sorted):
+                await interaction.followup.send("❌ 番号が不正です。")
+                return
+
+            event = events_sorted[index - 1]
+            event["title"] = new_title
+
+            if new_date:
+                dt_str = f"{new_date}T{new_time}" if new_time else f"{new_date}T00:00"
+                try:
+                    new_dt = datetime.fromisoformat(dt_str).replace(tzinfo=JST)
+                    event["datetime"] = new_dt.isoformat()
+                except Exception:
+                    await interaction.followup.send("❌ 日付形式が不正です。YYYY-MM-DD または YYYY-MM-DD HH:MM")
+                    return
+
+            guild_data["events"] = self._sorted_events(guild_data)
+            await data_manager.save_all()
+
+            embed = discord.Embed(title="予定修正", description=event["title"], color=0x3498db)
+            embed.add_field(name="日時", value=datetime.fromisoformat(event["datetime"]).astimezone(JST).strftime("%Y-%m-%d %H:%M"))
+            await interaction.followup.send(embed=embed)
+
+
         # ===== Todo =====
         @app_commands.command(name="todo_add", description="Todoを追加します（期限指定可）")
         async def todo_add(self, interaction: discord.Interaction, content: str, due_date: str = None, due_time: str = None):
@@ -224,5 +254,36 @@ def register_calendar_commands(bot, data_manager):
             # ↓ここで表示形式を修正
             embed.add_field(name="完了時刻", value=done_at_dt.strftime("%Y-%m-%d %H:%M"))
             await interaction.followup.send(embed=embed)
+
+        @app_commands.command(name="todo_edit", description="Todoを修正します（表示順基準）")
+        async def todo_edit(self, interaction: discord.Interaction, index: int, new_content: str, new_due_date: str = None, new_due_time: str = None):
+            await interaction.response.defer()
+            guild_data = data_manager.get_guild_data(interaction.guild_id)
+            todos_sorted = self._sorted_todos(guild_data)
+
+            if index < 1 or index > len(todos_sorted):
+                await interaction.followup.send("❌ 番号が不正です。")
+                return
+
+            todo = todos_sorted[index - 1]
+            todo["content"] = new_content
+
+            if new_due_date:
+                dt_str = f"{new_due_date}T{new_due_time}" if new_due_time else f"{new_due_date}T23:59"
+                try:
+                    new_due = datetime.fromisoformat(dt_str).replace(tzinfo=JST)
+                    todo["due"] = new_due.isoformat()
+                except Exception:
+                    await interaction.followup.send("❌ 日付形式が不正です。YYYY-MM-DD または YYYY-MM-DD HH:MM")
+                    return
+
+            guild_data["todos"] = self._sorted_todos(guild_data)
+            await data_manager.save_all()
+
+            embed = discord.Embed(title="Todo修正", description=todo["content"], color=0x3498db)
+            if todo.get("due"):
+                embed.add_field(name="期限", value=datetime.fromisoformat(todo["due"]).astimezone(JST).strftime("%Y-%m-%d %H:%M"))
+            await interaction.followup.send(embed=embed)
+
 
     bot.tree.add_command(Calendar())
