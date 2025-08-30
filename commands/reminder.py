@@ -12,8 +12,8 @@ def register_reminder_commands(bot, data_manager):
     data_manager は get_guild_data(guild_id) / save_all() を持つ想定
     - calendar.py と同じデータ構造:
       guild_data = {
-        "events": [ { "title": str, "datetime": ISO8601 }, ... ],
-        "todos":  [ { "content": str, "done": bool, "added_at": ISO8601, "done_at": ISO8601|None, "due": ISO8601|None }, ... ],
+        "events": [...],
+        "todos": [...],
         "reminder": { "enabled": bool, "channel_id": int, "notify_minutes": int }
       }
     """
@@ -26,7 +26,7 @@ def register_reminder_commands(bot, data_manager):
         # 単発タイマー
         # -------------------------
         @app_commands.command(name="timer", description="タイマーを設定します (例: 10s / 5m / 1h)")
-        async def timer(self, interaction: discord.Interaction, time_str: str, message: str):
+        async def timer(interaction: discord.Interaction, time_str: str, message: str):
             await interaction.response.defer(ephemeral=True)
             try:
                 amount = int(time_str[:-1])
@@ -39,7 +39,7 @@ def register_reminder_commands(bot, data_manager):
                     seconds = amount * 3600
                 else:
                     raise ValueError("invalid unit")
-            except Exception:
+            except:
                 await interaction.followup.send("形式が違います。例: 10s / 5m / 1h", ephemeral=True)
                 return
 
@@ -48,46 +48,51 @@ def register_reminder_commands(bot, data_manager):
             await interaction.channel.send(f"{interaction.user.mention} リマインダー: {message}")
 
         # -------------------------
-        # リマインダー通知の基本設定
+        # リマインダー送信先設定
         # -------------------------
-        @app_commands.command(name="setchannel", description="予定リマインダーを送るチャンネルを設定します")
-        async def setchannel(self, interaction: discord.Interaction, channel: discord.TextChannel):
+        @app_commands.command(name="setchannel", description="予定リマインダーを送るチャンネルを設定")
+        async def setchannel(interaction: discord.Interaction, channel: discord.TextChannel):
             gd = data_manager.get_guild_data(interaction.guild_id)
             rem = gd.setdefault("reminder", {})
             rem["channel_id"] = channel.id
             await data_manager.save_all()
             await interaction.response.send_message(f"📢 リマインダー送信先を {channel.mention} に設定しました。")
 
-        @app_commands.command(name="notifytime", description="予定を何分前に通知するか設定します（デフォルト5分）")
-        async def notifytime(self, interaction: discord.Interaction, minutes: app_commands.Range[int, 1, 1440]):
+        # -------------------------
+        # 通知タイミング設定
+        # -------------------------
+        @app_commands.command(name="notifytime", description="予定を何分前に通知するか設定（デフォルト5分）")
+        async def notifytime(interaction: discord.Interaction, minutes: app_commands.Range[int, 1, 1440]):
             gd = data_manager.get_guild_data(interaction.guild_id)
             rem = gd.setdefault("reminder", {})
             rem["notify_minutes"] = int(minutes)
             await data_manager.save_all()
             await interaction.response.send_message(f"⏰ 予定を {minutes} 分前に通知します。")
 
-        @app_commands.command(name="on", description="予定アナウンスを有効化します")
-        async def on(self, interaction: discord.Interaction):
+        # -------------------------
+        # アナウンス有効化/無効化/状態
+        # -------------------------
+        @app_commands.command(name="on", description="予定アナウンスを有効化")
+        async def on(interaction: discord.Interaction):
             gd = data_manager.get_guild_data(interaction.guild_id)
             rem = gd.setdefault("reminder", {})
             if "channel_id" not in rem:
-                # 未設定なら現在のチャンネルに
                 rem["channel_id"] = interaction.channel.id
             rem.setdefault("notify_minutes", 5)
             rem["enabled"] = True
             await data_manager.save_all()
             await interaction.response.send_message("✅ このサーバーの予定アナウンスを有効化しました。")
 
-        @app_commands.command(name="off", description="予定アナウンスを無効化します")
-        async def off(self, interaction: discord.Interaction):
+        @app_commands.command(name="off", description="予定アナウンスを無効化")
+        async def off(interaction: discord.Interaction):
             gd = data_manager.get_guild_data(interaction.guild_id)
             rem = gd.setdefault("reminder", {})
             rem["enabled"] = False
             await data_manager.save_all()
             await interaction.response.send_message("🛑 このサーバーの予定アナウンスを無効化しました。")
 
-        @app_commands.command(name="status", description="予定アナウンスの状態を表示します")
-        async def status(self, interaction: discord.Interaction):
+        @app_commands.command(name="status", description="予定アナウンスの状態を表示")
+        async def status(interaction: discord.Interaction):
             gd = data_manager.get_guild_data(interaction.guild_id)
             rem = gd.get("reminder", {})
             enabled = rem.get("enabled", False)
@@ -105,7 +110,7 @@ def register_reminder_commands(bot, data_manager):
     bot.tree.add_command(Reminder())
 
     # -------------------------
-    # サーバー横断のバックグラウンド監視タスク
+    # バックグラウンドで予定通知
     # -------------------------
     async def reminder_loop():
         await bot.wait_until_ready()
@@ -128,25 +133,22 @@ def register_reminder_commands(bot, data_manager):
 
                 notify_before = int(rem.get("notify_minutes", 5))
 
-                # ---- 予定（events）通知: X分前 ----
+                # 予定(events)通知
                 for ev in gd.get("events", []):
                     try:
                         ev_dt = datetime.fromisoformat(ev["datetime"]).astimezone(JST)
                     except Exception:
                         continue
-                    if ev_dt < now:
-                        continue
-
                     delta_min = int((ev_dt - now).total_seconds() // 60)
                     if delta_min == notify_before:
                         title = ev.get("title", "(無題)")
                         when = ev_dt.strftime("%Y-%m-%d %H:%M")
                         try:
                             await channel.send(f"⏰ **{notify_before}分後**に予定: **{title}**（{when}）")
-                        except Exception:
+                        except:
                             pass
 
-                # ---- Todo（due）通知: X分前、未完のみ ----
+                # Todo(due)通知
                 for td in gd.get("todos", []):
                     if td.get("done"):
                         continue
@@ -157,22 +159,18 @@ def register_reminder_commands(bot, data_manager):
                         due_dt = datetime.fromisoformat(due_iso).astimezone(JST)
                     except Exception:
                         continue
-                    if due_dt < now:
-                        continue
-
                     delta_min = int((due_dt - now).total_seconds() // 60)
                     if delta_min == notify_before:
                         content = td.get("content", "(内容なし)")
                         when = due_dt.strftime("%Y-%m-%d %H:%M")
                         try:
                             await channel.send(f"📝 **{notify_before}分後**が期限: **{content}**（{when}）")
-                        except Exception:
+                        except:
                             pass
 
-            # ちょうど分境界に近づけるため 55秒スリープ
-            await asyncio.sleep(55)
+            await asyncio.sleep(55)  # 1分ごとにチェック
 
-    # 多重起動を避けるためフラグでガード
+    # 多重起動防止
     if not hasattr(bot, "_reminder_loop_started"):
         bot._reminder_loop_started = True
         asyncio.create_task(reminder_loop())
