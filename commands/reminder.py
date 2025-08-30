@@ -65,6 +65,70 @@ def register_reminder_commands(bot, data_manager):
             await asyncio.sleep(seconds)
             await interaction.channel.send(f"{interaction.user.mention} ⏰ リマインダー: {message}")
 
+        # ===== /rem daily =====
+        @app_commands.command(name="daily", description="毎日指定した時刻にリマインダーを設定 (例: 21:00)")
+        async def daily(self, interaction: discord.Interaction, time_str: str, message: str):
+            guild_data = data_manager.get_guild_data(interaction.guild_id)
+            reminders = guild_data.setdefault("daily_reminders", [])
+            reminders.append({"time": time_str, "message": message, "channel_id": interaction.channel.id})
+            await data_manager.save_all()
+            await interaction.response.send_message(f"✅ 毎日 {time_str} に通知を登録しました: {message}")
+
+        # ===== /rem weekly =====
+        @app_commands.command(name="weekly", description="毎週指定した曜日・時刻にリマインダーを設定 (例: 月曜 09:00)")
+        async def weekly(self, interaction: discord.Interaction, weekday: str, time_str: str, message: str):
+            guild_data = data_manager.get_guild_data(interaction.guild_id)
+            reminders = guild_data.setdefault("weekly_reminders", [])
+            reminders.append({"weekday": weekday.lower(), "time": time_str, "message": message, "channel_id": interaction.channel.id})
+            await data_manager.save_all()
+            await interaction.response.send_message(f"✅ 毎週 {weekday} {time_str} に通知を登録しました: {message}")
+
+        # ===== /rem list =====
+        @app_commands.command(name="list", description="登録されている定期リマインダー一覧")
+        async def list_reminders(self, interaction: discord.Interaction):
+            guild_data = data_manager.get_guild_data(interaction.guild_id)
+            daily = guild_data.get("daily_reminders", [])
+            weekly = guild_data.get("weekly_reminders", [])
+
+            embed = discord.Embed(title="定期リマインダー一覧", color=0x00ff99)
+            if daily:
+                for i, dr in enumerate(daily, start=1):
+                    ch = bot.get_channel(dr["channel_id"])
+                    embed.add_field(name=f"[D{i}] {dr['time']} チャンネル: {ch.mention if ch else '不明'}", value=dr["message"], inline=False)
+            if weekly:
+                for i, wr in enumerate(weekly, start=1):
+                    ch = bot.get_channel(wr["channel_id"])
+                    embed.add_field(name=f"[W{i}] {wr['weekday']} {wr['time']} チャンネル: {ch.mention if ch else '不明'}", value=wr["message"], inline=False)
+
+            if not daily and not weekly:
+                embed.description = "登録されている定期リマインダーはありません。"
+
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+
+        # ===== /rem remove =====
+        @app_commands.command(name="remove", description="定期リマインダーを削除 (ID指定)")
+        async def remove_reminder(self, interaction: discord.Interaction, reminder_id: str):
+            guild_data = data_manager.get_guild_data(interaction.guild_id)
+            daily = guild_data.get("daily_reminders", [])
+            weekly = guild_data.get("weekly_reminders", [])
+
+            removed = None
+            if reminder_id.startswith("D"):
+                idx = int(reminder_id[1:]) - 1
+                if 0 <= idx < len(daily):
+                    removed = daily.pop(idx)
+                    await interaction.response.send_message(f"✅ 毎日リマインダー削除: {removed['message']}")
+            elif reminder_id.startswith("W"):
+                idx = int(reminder_id[1:]) - 1
+                if 0 <= idx < len(weekly):
+                    removed = weekly.pop(idx)
+                    await interaction.response.send_message(f"✅ 毎週リマインダー削除: {removed['message']}")
+            else:
+                await interaction.response.send_message("❌ IDが不正です。D# または W# 形式で指定してください。", ephemeral=True)
+                return
+
+            await data_manager.save_all()
+
     bot.tree.add_command(Reminder())
 
     # ===== バックグラウンド通知タスク =====
@@ -75,25 +139,45 @@ def register_reminder_commands(bot, data_manager):
             for guild in bot.guilds:
                 guild_data = data_manager.get_guild_data(guild.id)
                 rem = guild_data.get("reminder", {})
-                if not rem.get("enabled"):
-                    continue
                 channel_id = rem.get("channel_id")
-                if not channel_id:
-                    continue
-                channel = bot.get_channel(channel_id)
-                if not channel:
-                    continue
-                notify_before = int(rem.get("notify_minutes", 5))
+                channel = bot.get_channel(channel_id) if channel_id else None
+                notify_before = int(rem.get("notify_minutes", 5)) if rem.get("enabled") else None
 
-                # calendar.py の events を参照して通知
+                # 既存の予定通知
                 for ev in guild_data.get("events", []):
                     try:
                         ev_dt = datetime.fromisoformat(ev["datetime"]).astimezone(JST)
-                        delta_min = int((ev_dt - now).total_seconds() // 60)
-                        if delta_min == notify_before:
-                            await channel.send(f"⏰ **{notify_before}分後**に予定: **{ev.get('title','(無題)')}**")
+                        if notify_before is not None:
+                            delta_min = int((ev_dt - now).total_seconds() // 60)
+                            if delta_min == notify_before and channel:
+                                await channel.send(f"⏰ **{notify_before}分後**に予定: **{ev.get('title','(無題)')}**")
                     except Exception:
                         continue
+
+                # 毎日リマインダー
+                for dr in guild_data.get("daily_reminders", []):
+                    try:
+                        hr, mn = map(int, dr["time"].split(":"))
+                        if now.hour == hr and now.minute == mn:
+                            ch = bot.get_channel(dr["channel_id"])
+                            if ch:
+                                await ch.send(f"⏰ 毎日リマインダー: {dr['message']}")
+                    except Exception:
+                        continue
+
+                # 毎週リマインダー
+                weekdays = {"月":0,"火":1,"水":2,"木":3,"金":4,"土":5,"日":6}
+                for wr in guild_data.get("weekly_reminders", []):
+                    try:
+                        wd = weekdays.get(wr["weekday"], -1)
+                        hr, mn = map(int, wr["time"].split(":"))
+                        if now.weekday() == wd and now.hour == hr and now.minute == mn:
+                            ch = bot.get_channel(wr["channel_id"])
+                            if ch:
+                                await ch.send(f"⏰ 毎週リマインダー: {wr['message']}")
+                    except Exception:
+                        continue
+
             await asyncio.sleep(55)
 
     # 二重起動防止
