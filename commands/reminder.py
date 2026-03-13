@@ -167,19 +167,27 @@ def register_reminder_commands(bot, data_manager):
             await data_manager.save_all()
             await interaction.response.send_message(f"✅ IDを設定しました: `{calendar_id}`")
 
-        @app_commands.command(name="gcal_add", description="Googleカレンダーに予定追加 (2024-12-25 10:00 タイトル)")
+        @app_commands.command(name="gcal_add", description="Googleカレンダーに予定追加")
         async def gcal_add(self, interaction: discord.Interaction, date: str, time: str, title: str):
             guild_data = data_manager.get_guild_data(interaction.guild_id)
             cal_id = guild_data.get("google_calendar_id")
             if not cal_id:
-                await interaction.response.send_message("❌ `/rem gcal_set` を先にしてください。")
+                await interaction.response.send_message("❌ IDが未設定です。")
                 return
             await interaction.response.defer()
             try:
-                gcal.add_event(cal_id, title, date, time)
-                await interaction.followup.send(f"📅 追加成功: **{title}**")
+                # 実行
+                res = gcal.add_event(cal_id, title, date, time)
+                # 結果表示を詳細にする
+                html_link = res.get('htmlLink', 'リンクなし')
+                await interaction.followup.send(
+                    f"📅 **追加成功！**\n"
+                    f"タイトル: {title}\n"
+                    f"カレンダーID: `{cal_id}`\n"
+                    f"URL: [カレンダーを開く]({html_link})"
+                )
             except Exception as e:
-                await interaction.followup.send(f"❌ エラー: {e}")
+                await interaction.followup.send(f"❌ エラー発生: {e}")
 
     bot.tree.add_command(Reminder())
 
