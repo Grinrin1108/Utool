@@ -40,9 +40,10 @@ class GoogleCalendarManager:
         return events_result.get('items', [])
 
     def add_event(self, calendar_id, title, date_str, time_str):
-        if not self.service: return None
+        if not self.service: 
+            raise Exception("Google API Service が初期化されていません。環境変数を確認してください。")
+        
         dt_str = f"{date_str}T{time_str}:00"
-        # タイムゾーン込みでパース
         start_dt = datetime.fromisoformat(dt_str).replace(tzinfo=JST)
         end_dt = start_dt + timedelta(hours=1)
 
@@ -51,6 +52,7 @@ class GoogleCalendarManager:
             'start': {'dateTime': start_dt.isoformat(), 'timeZone': 'Asia/Tokyo'},
             'end': {'dateTime': end_dt.isoformat(), 'timeZone': 'Asia/Tokyo'},
         }
+        # insert().execute() の結果を返す
         return self.service.events().insert(calendarId=calendar_id, body=event).execute()
 
 # --- Discord Commands ---
@@ -174,20 +176,18 @@ def register_reminder_commands(bot, data_manager):
             if not cal_id:
                 await interaction.response.send_message("❌ IDが未設定です。")
                 return
+            
             await interaction.response.defer()
             try:
-                # 実行
                 res = gcal.add_event(cal_id, title, date, time)
-                # 結果表示を詳細にする
-                html_link = res.get('htmlLink', 'リンクなし')
-                await interaction.followup.send(
-                    f"📅 **追加成功！**\n"
-                    f"タイトル: {title}\n"
-                    f"カレンダーID: `{cal_id}`\n"
-                    f"URL: [カレンダーを開く]({html_link})"
-                )
+                # res が None でないかチェック
+                if res and 'htmlLink' in res:
+                    await interaction.followup.send(f"📅 追加成功: **{title}**\n{res['htmlLink']}")
+                else:
+                    await interaction.followup.send(f"⚠️ 成功したようですが、リンクを取得できませんでした。")
             except Exception as e:
-                await interaction.followup.send(f"❌ エラー発生: {e}")
+                # ここで詳しいエラー内容を表示させる
+                await interaction.followup.send(f"❌ APIエラーが発生しました:\n```{e}```")
 
     bot.tree.add_command(Reminder())
 
