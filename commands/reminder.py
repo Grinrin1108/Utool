@@ -122,11 +122,11 @@ def format_event_list(events, weather_data, title_text):
             else:
                 time_label = "`終日`"
             
-            # IDコピー用リンク
-            copy_url = f"https://www.google.com/search?q={e['id']}"
-            lines.append(f"{time_label} **{e['summary']}** [🔗ID]({copy_url})")
+            # IDをインラインコードブロックにして、コピーしやすくする
+            # 前後の [🔗ID](url) を削除し、IDそのものを表示
+            lines.append(f"{time_label} **{e['summary']}**\nID: `{e['id']}`")
         
-        # 予定リストの後に空白行的な余白を入れるために \n\u200b を追加
+        # 予定と予定の間、および日付グループの間に余白を追加
         embed.add_field(name=field_name, value="\n".join(lines) + "\n\u200b", inline=False)
     
     return embed
