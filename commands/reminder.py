@@ -11,15 +11,14 @@ from googleapiclient.discovery import build
 
 # JST タイムゾーン
 JST = timezone(timedelta(hours=9))
-SCOPES = ['https://www.googleapis.com/auth/calendar']
+SCOPES = ['https://https://www.googleapis.com/auth/calendar']
 WEEKDAYS = ["月", "火", "水", "木", "金", "土", "日"]
 
-# 天気コードを日本語に変換する辞書 (Open-Meteo)
 WEATHER_CODES = {
-    0: "☀️ 快晴", 1: "🌤️ 晴れ", 2: "⛅ くもり", 3: "☁️ どんより曇り",
-    45: "🌫️ 霧", 48: "🌫️ 霧", 51: "🚿 小雨", 53: "🚿 小雨", 55: "🚿 小雨",
-    61: "☔ 雨", 63: "☔ 雨", 65: "☔ 激しい雨", 71: "❄️ 雪", 73: "❄️ 雪", 75: "❄️ 激しい雪",
-    80: "🌦️ にわか雨", 81: "🌦️ にわか雨", 82: "🌦️ 激しいにわか雨", 95: "⚡ 雷雨"
+    0: "☀️快晴", 1: "🌤️晴れ", 2: "⛅くもり", 3: "☁️曇り",
+    45: "🌫️霧", 48: "🌫️霧", 51: "🚿小雨", 53: "🚿小雨", 55: "🚿小雨",
+    61: "☔雨", 63: "☔雨", 65: "☔激しい雨", 71: "❄️雪", 73: "❄️雪", 75: "❄️激しい雪",
+    80: "🌦️にわか雨", 81: "🌦️にわか雨", 82: "🌦️激しいにわか雨", 95: "⚡雷雨"
 }
 
 # --- Google Calendar Manager ---
@@ -38,7 +37,6 @@ class GoogleCalendarManager:
             self.service = None
 
     def get_events(self, calendar_id, days=1, q=None):
-        """予定取得 (検索キーワード q にも対応)"""
         if not self.service: return []
         now = datetime.now(JST)
         time_min = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
@@ -51,16 +49,15 @@ class GoogleCalendarManager:
         ).execute()
         return events_result.get('items', [])
 
-    def add_event(self, calendar_id, title, date_str, time_str=None):
+    def add_event(self, calendar_id, title, date_str, start_time=None, end_time=None):
         if not self.service: raise Exception("Google API Service 未初期化")
-        if time_str:
-            dt_str = f"{date_str}T{time_str}:00"
-            start_dt = datetime.fromisoformat(dt_str).replace(tzinfo=JST)
-            end_dt = start_dt + timedelta(hours=1)
+        if start_time:
+            s_dt = datetime.fromisoformat(f"{date_str}T{start_time}:00").replace(tzinfo=JST)
+            e_dt = datetime.fromisoformat(f"{date_str}T{end_time}:00").replace(tzinfo=JST) if end_time else s_dt + timedelta(hours=1)
             event = {
                 'summary': title,
-                'start': {'dateTime': start_dt.isoformat(), 'timeZone': 'Asia/Tokyo'},
-                'end': {'dateTime': end_dt.isoformat(), 'timeZone': 'Asia/Tokyo'},
+                'start': {'dateTime': s_dt.isoformat(), 'timeZone': 'Asia/Tokyo'},
+                'end': {'dateTime': e_dt.isoformat(), 'timeZone': 'Asia/Tokyo'},
             }
         else:
             event = {'summary': title, 'start': {'date': date_str}, 'end': {'date': date_str}}
@@ -71,18 +68,21 @@ class GoogleCalendarManager:
         return self.service.events().delete(calendarId=calendar_id, eventId=event_id).execute()
 
 # --- Weather Utility ---
-def get_weather():
-    """東京の天気を取得 (Open-Meteo)"""
+def get_weather_forecast(days=7):
+    """複数日分の天気を取得"""
     try:
-        url = "https://api.open-meteo.com/v1/forecast?latitude=35.6895&longitude=139.6917&daily=weathercode,temperature_2m_max,temperature_2m_min&timezone=Asia%2FTokyo"
+        url = f"https://api.open-meteo.com/v1/forecast?latitude=35.6895&longitude=139.6917&daily=weathercode,temperature_2m_max,temperature_2m_min&timezone=Asia%2FTokyo"
         r = requests.get(url).json()
-        daily = r['daily']
-        code = daily['weathercode'][0]
-        max_t = daily['temperature_2m_max'][0]
-        min_t = daily['temperature_2m_min'][0]
-        return f"{WEATHER_CODES.get(code, '❓ 不明')} (最高:{max_t}℃ / 最低:{min_t}℃)"
+        forecast = {}
+        for i in range(len(r['daily']['time'])):
+            date_str = r['daily']['time'][i]
+            code = r['daily']['weathercode'][i]
+            max_t = r['daily']['temperature_2m_max'][i]
+            min_t = r['daily']['temperature_2m_min'][i]
+            forecast[date_str] = f"{WEATHER_CODES.get(code, '不明')} ({max_t}℃/{min_t}℃)"
+        return forecast
     except:
-        return None
+        return {}
 
 # --- Discord Commands ---
 def register_reminder_commands(bot, data_manager):
@@ -100,62 +100,86 @@ def register_reminder_commands(bot, data_manager):
             await interaction.response.send_message(txt, ephemeral=True)
 
         @app_commands.command(name="gcal_add", description="予定追加")
-        async def gcal_add(self, interaction: discord.Interaction, date: str, title: str, time: str = None):
+        async def gcal_add(self, interaction: discord.Interaction, date: str, title: str, start_time: str = None, end_time: str = None):
             guild_data = data_manager.get_guild_data(interaction.guild_id)
             cal_id = guild_data.get("google_calendar_id")
+            if not cal_id: return await interaction.response.send_message("❌ ID未設定")
+            
             await interaction.response.defer()
             try:
-                res = gcal.add_event(cal_id, title, date, time)
-                embed = discord.Embed(title="📅 予定を追加しました", color=0x4285F4)
+                res = gcal.add_event(cal_id, title, date, start_time, end_time)
+                dt_obj = datetime.strptime(date, '%Y-%m-%d')
+                weekday = WEEKDAYS[dt_obj.weekday()]
+                
+                embed = discord.Embed(title="✅ 予定を追加しました", color=0x4285F4)
                 embed.add_field(name="内容", value=title, inline=False)
-                embed.add_field(name="日時", value=f"{date} {time if time else '(終日)'}", inline=True)
+                t_display = f"{start_time} - {end_time if end_time else '(+1h)'}" if start_time else "(終日)"
+                embed.add_field(name="日時", value=f"{date}({weekday}) {t_display}", inline=True)
                 if res.get('htmlLink'):
-                    embed.add_field(name="リンク", value=f"[カレンダー表示]({res['htmlLink']})", inline=True)
+                    embed.add_field(name="Link", value=f"[Calendar]({res['htmlLink']})", inline=True)
                 await interaction.followup.send(embed=embed)
-            except Exception as e:
-                await interaction.followup.send(f"❌ エラー: {e}")
+            except Exception:
+                await interaction.followup.send("❌ 入力形式エラー (YYYY-MM-DD / HH:MM)")
 
-        @app_commands.command(name="gcal_list", description="予定表示")
+        @app_commands.command(name="gcal_list", description="予定を日付ごとに表示")
         @app_commands.choices(duration=[
             app_commands.Choice(name="今日", value=1),
-            app_commands.Choice(name="今後1週間", value=7),
-            app_commands.Choice(name="今後1ヶ月", value=30),
+            app_commands.Choice(name="1週間", value=7),
+            app_commands.Choice(name="1ヶ月", value=30),
         ])
         async def gcal_list(self, interaction: discord.Interaction, duration: int = 1):
             guild_data = data_manager.get_guild_data(interaction.guild_id)
             cal_id = guild_data.get("google_calendar_id")
+            if not cal_id: return await interaction.response.send_message("❌ ID未設定")
+
             await interaction.response.defer()
             try:
                 events = gcal.get_events(cal_id, days=duration)
-                embed = discord.Embed(title=f"📅 予定リスト ({duration}日間)", color=0x4285F4)
+                weather_data = get_weather_forecast(days=duration)
+                
+                embed = discord.Embed(title=f"📅 スケジュール集計 ({duration}日間)", color=0x4285F4)
+                
                 if not events:
                     embed.description = "予定はありません。"
-                for e in events:
-                    start = e['start'].get('dateTime', e['start'].get('date'))
-                    dt = datetime.fromisoformat(start.replace('Z', '+00:00')).astimezone(JST) if 'T' in start else datetime.strptime(start, '%Y-%m-%d')
-                    time_str = dt.strftime(f'%m/%d({WEEKDAYS[dt.weekday()]}) %H:%M') if 'T' in start else dt.strftime(f'%m/%d({WEEKDAYS[dt.weekday()]}) (終日)')
-                    embed.add_field(name=f"{time_str} | {e['summary']}", value=f"ID: `{e['id']}`", inline=False)
-                await interaction.followup.send(embed=embed)
-            except Exception as e:
-                await interaction.followup.send(f"❌ 取得エラー: {e}")
+                else:
+                    # 日付ごとにグループ化
+                    grouped_events = {}
+                    for e in events:
+                        start_val = e['start'].get('dateTime', e['start'].get('date'))
+                        date_key = start_val[:10]
+                        if date_key not in grouped_events:
+                            grouped_events[date_key] = []
+                        grouped_events[date_key].append(e)
 
-        @app_commands.command(name="gcal_search", description="キーワードで予定を検索")
-        async def gcal_search(self, interaction: discord.Interaction, keyword: str):
-            guild_data = data_manager.get_guild_data(interaction.guild_id)
-            cal_id = guild_data.get("google_calendar_id")
-            await interaction.response.defer()
-            try:
-                # 今後90日間の中からキーワード検索
-                events = gcal.get_events(cal_id, days=90, q=keyword)
-                embed = discord.Embed(title=f"🔍 検索結果: {keyword}", color=0xF4B400)
-                if not events:
-                    embed.description = "一致する予定は見つかりませんでした。"
-                for e in events[:10]: # 最大10件表示
-                    start = e['start'].get('dateTime', e['start'].get('date'))
-                    embed.add_field(name=f"{start[:10]} | {e['summary']}", value=f"ID: `{e['id']}`", inline=False)
+                    for date_key, day_events in grouped_events.items():
+                        dt = datetime.strptime(date_key, '%Y-%m-%d')
+                        weekday = WEEKDAYS[dt.weekday()]
+                        weather = weather_data.get(date_key, "")
+                        
+                        # フィールド見出し: 05/25(土) ☀️快晴
+                        field_name = f"─── {dt.strftime('%m/%d')}({weekday}) {weather} ───"
+                        
+                        lines = []
+                        for e in day_events:
+                            start_val = e['start'].get('dateTime', e['start'].get('date'))
+                            end_val = e['end'].get('dateTime', e['end'].get('date'))
+                            
+                            if 'T' in start_val:
+                                s_t = datetime.fromisoformat(start_val.replace('Z', '+00:00')).astimezone(JST).strftime('%H:%M')
+                                e_t = datetime.fromisoformat(end_val.replace('Z', '+00:00')).astimezone(JST).strftime('%H:%M')
+                                time_label = f"`{s_t}-{e_t}`"
+                            else:
+                                time_label = "`終日`"
+                            
+                            # IDを隠しリンクにしてコピーしやすくする
+                            copy_url = f"https://www.google.com/search?q={e['id']}" # ダミーURLだがIDが文字列として含まれる
+                            lines.append(f"{time_label} **{e['summary']}** [🔗ID]({copy_url} 'クリックしてIDを選択コピー')")
+                        
+                        embed.add_field(name=field_name, value="\n".join(lines), inline=False)
+
                 await interaction.followup.send(embed=embed)
             except Exception as e:
-                await interaction.followup.send(f"❌ 検索エラー: {e}")
+                await interaction.followup.send(f"❌ エラー: {e}")
 
         @app_commands.command(name="gcal_delete", description="予定削除")
         async def gcal_delete(self, interaction: discord.Interaction, event_id: str):
@@ -164,19 +188,20 @@ def register_reminder_commands(bot, data_manager):
             await interaction.response.defer()
             try:
                 gcal.delete_event(cal_id, event_id)
-                await interaction.followup.send(f"✅ 削除しました。")
+                await interaction.followup.send("✅ 削除しました。")
             except:
-                await interaction.followup.send(f"❌ 削除失敗。")
+                await interaction.followup.send("❌ 削除失敗。IDが正しいか確認してください。")
 
     bot.tree.add_command(Reminder())
 
-    # --- バックグラウンド通知ループ ---
+    # --- 通知ループ ---
     async def reminder_loop():
         await bot.wait_until_ready()
         while not bot.is_closed():
             now = datetime.now(JST).replace(second=0, microsecond=0)
             if now.hour == 8 and now.minute == 0:
-                weather_info = get_weather()
+                weather_map = get_weather_forecast(days=1)
+                today_str = now.strftime('%Y-%m-%d')
                 for guild in bot.guilds:
                     guild_data = data_manager.get_guild_data(guild.id)
                     rem = guild_data.get("reminder", {})
@@ -186,9 +211,9 @@ def register_reminder_commands(bot, data_manager):
                         if channel and cal_id:
                             try:
                                 events = gcal.get_events(cal_id, days=1)
-                                embed = discord.Embed(title="☀️ おはようございます！", color=0x4285F4)
-                                if weather_info:
-                                    embed.add_field(name="今日の天気", value=weather_info, inline=False)
+                                weather = weather_map.get(today_str, "")
+                                embed = discord.Embed(title=f"☀️ {now.strftime('%m/%d')}({WEEKDAYS[now.weekday()]}) の予定", color=0x4285F4)
+                                if weather: embed.description = f"今日の天気: **{weather}**"
                                 
                                 if events:
                                     lines = []
@@ -196,9 +221,9 @@ def register_reminder_commands(bot, data_manager):
                                         st = e['start'].get('dateTime', e['start'].get('date'))
                                         time_label = st.split('T')[1][:5] if 'T' in st else "終日"
                                         lines.append(f"・`{time_label}` {e['summary']}")
-                                    embed.add_field(name="今日の予定", value="\n".join(lines), inline=False)
+                                    embed.add_field(name="予定一覧", value="\n".join(lines))
                                 else:
-                                    embed.add_field(name="今日の予定", value="予定はありません。", inline=False)
+                                    embed.add_field(name="予定一覧", value="予定はありません。")
                                 await channel.send(embed=embed)
                             except: pass
             await asyncio.sleep(55)
