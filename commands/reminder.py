@@ -52,8 +52,13 @@ class GoogleCalendarManager:
             'start': {'dateTime': start_dt.isoformat(), 'timeZone': 'Asia/Tokyo'},
             'end': {'dateTime': end_dt.isoformat(), 'timeZone': 'Asia/Tokyo'},
         }
-        # insert().execute() の結果を返す
         return self.service.events().insert(calendarId=calendar_id, body=event).execute()
+
+    # --- 追加: 削除機能 ---
+    def delete_event(self, calendar_id, event_id):
+        if not self.service: 
+            raise Exception("Google API Service が初期化されていません。")
+        return self.service.events().delete(calendarId=calendar_id, eventId=event_id).execute()
 
 # --- Discord Commands ---
 def register_reminder_commands(bot, data_manager):
@@ -169,6 +174,35 @@ def register_reminder_commands(bot, data_manager):
             await data_manager.save_all()
             await interaction.response.send_message(f"✅ IDを設定しました: `{calendar_id}`")
 
+        @app_commands.command(name="gcal_list", description="Googleカレンダーの今日の予定を表示")
+        async def gcal_list(self, interaction: discord.Interaction):
+            guild_data = data_manager.get_guild_data(interaction.guild_id)
+            cal_id = guild_data.get("google_calendar_id")
+            if not cal_id:
+                await interaction.response.send_message("❌ IDが未設定です。", ephemeral=True)
+                return
+
+            await interaction.response.defer()
+            try:
+                events = gcal.get_todays_events(cal_id)
+                if not events:
+                    await interaction.followup.send("📅 今日の予定はありません。")
+                    return
+
+                embed = discord.Embed(title="📅 本日のGoogleカレンダー予定", color=0x4285F4)
+                for event in events:
+                    start = event['start'].get('dateTime', event['start'].get('date'))
+                    time_str = start.split('T')[1][:5] if 'T' in start else "終日"
+                    eid = event['id']
+                    embed.add_field(
+                        name=f"{time_str} : {event['summary']}",
+                        value=f"ID: `{eid}`",
+                        inline=False
+                    )
+                await interaction.followup.send(embed=embed)
+            except Exception as e:
+                await interaction.followup.send(f"❌ 取得エラー: {e}")
+
         @app_commands.command(name="gcal_add", description="Googleカレンダーに予定追加")
         async def gcal_add(self, interaction: discord.Interaction, date: str, time: str, title: str):
             guild_data = data_manager.get_guild_data(interaction.guild_id)
@@ -180,14 +214,27 @@ def register_reminder_commands(bot, data_manager):
             await interaction.response.defer()
             try:
                 res = gcal.add_event(cal_id, title, date, time)
-                # res が None でないかチェック
                 if res and 'htmlLink' in res:
                     await interaction.followup.send(f"📅 追加成功: **{title}**\n{res['htmlLink']}")
                 else:
                     await interaction.followup.send(f"⚠️ 成功したようですが、リンクを取得できませんでした。")
             except Exception as e:
-                # ここで詳しいエラー内容を表示させる
                 await interaction.followup.send(f"❌ APIエラーが発生しました:\n```{e}```")
+
+        @app_commands.command(name="gcal_delete", description="Googleカレンダーの予定を削除 (IDを指定)")
+        async def gcal_delete(self, interaction: discord.Interaction, event_id: str):
+            guild_data = data_manager.get_guild_data(interaction.guild_id)
+            cal_id = guild_data.get("google_calendar_id")
+            if not cal_id:
+                await interaction.response.send_message("❌ IDが未設定です。", ephemeral=True)
+                return
+
+            await interaction.response.defer()
+            try:
+                gcal.delete_event(cal_id, event_id)
+                await interaction.followup.send(f"✅ 予定を削除しました。(ID: `{event_id}`)")
+            except Exception as e:
+                await interaction.followup.send(f"❌ 削除エラー: IDが正しいか確認してください。\n```{e}```")
 
     bot.tree.add_command(Reminder())
 
@@ -196,7 +243,7 @@ def register_reminder_commands(bot, data_manager):
         await bot.wait_until_ready()
         while not bot.is_closed():
             now = datetime.now(JST).replace(second=0, microsecond=0)
-            is_report_time = (now.hour == 8 and now.minute == 0) # 毎朝8時
+            is_report_time = (now.hour == 8 and now.minute == 0)
 
             for guild in bot.guilds:
                 guild_data = data_manager.get_guild_data(guild.id)
@@ -205,7 +252,6 @@ def register_reminder_commands(bot, data_manager):
 
                 if not channel: continue
 
-                # 1. Googleカレンダー朝の通知 (8:00)
                 if is_report_time:
                     cal_id = guild_data.get("google_calendar_id")
                     if cal_id:
@@ -221,7 +267,6 @@ def register_reminder_commands(bot, data_manager):
                         except Exception as e:
                             print(f"GCal Error: {e}")
 
-                # 2. 既存のカレンダー予定（5分前など）
                 notify_before = int(rem.get("notify_minutes", 5))
                 for ev in guild_data.get("events", []):
                     try:
@@ -230,13 +275,11 @@ def register_reminder_commands(bot, data_manager):
                             await channel.send(f"⏰ **{notify_before}分後**: {ev.get('title')}")
                     except: continue
 
-                # 3. 毎日リマインダー
                 for dr in guild_data.get("daily_reminders", []):
                     if dr["time"] == now.strftime("%H:%M"):
                         ch = bot.get_channel(dr["channel_id"])
                         if ch: await ch.send(f"⏰ 毎日通知: {dr['message']}")
 
-                # 4. 毎週リマインダー
                 wd_map = {"月":0,"火":1,"水":2,"木":3,"金":4,"土":5,"日":6}
                 for wr in guild_data.get("weekly_reminders", []):
                     if wd_map.get(wr["weekday"]) == now.weekday() and wr["time"] == now.strftime("%H:%M"):
@@ -247,5 +290,4 @@ def register_reminder_commands(bot, data_manager):
 
     if not hasattr(bot, "_reminder_loop_started"):
         bot._reminder_loop_started = True
-        # ここを修正しました (async を削除)
         asyncio.create_task(reminder_loop())
