@@ -12,6 +12,9 @@ from googleapiclient.discovery import build
 JST = timezone(timedelta(hours=9))
 SCOPES = ['https://www.googleapis.com/auth/calendar']
 
+# 曜日のリスト
+WEEKDAYS = ["月", "火", "水", "木", "金", "土", "日"]
+
 # --- Google Calendar Manager ---
 class GoogleCalendarManager:
     def __init__(self):
@@ -45,7 +48,6 @@ class GoogleCalendarManager:
             raise Exception("Google API Service が初期化されていません。")
         
         if time_str:
-            # 時間指定がある場合
             dt_str = f"{date_str}T{time_str}:00"
             start_dt = datetime.fromisoformat(dt_str).replace(tzinfo=JST)
             end_dt = start_dt + timedelta(hours=1)
@@ -55,13 +57,11 @@ class GoogleCalendarManager:
                 'end': {'dateTime': end_dt.isoformat(), 'timeZone': 'Asia/Tokyo'},
             }
         else:
-            # 終日予定の場合
             event = {
                 'summary': title,
                 'start': {'date': date_str},
                 'end': {'date': date_str},
             }
-        
         return self.service.events().insert(calendarId=calendar_id, body=event).execute()
 
     def delete_event(self, calendar_id, event_id):
@@ -110,16 +110,21 @@ def register_reminder_commands(bot, data_manager):
                 res = gcal.add_event(cal_id, title, date, time)
                 url = res.get('htmlLink')
                 
+                # 表示用の日付整形
+                dt_obj = datetime.strptime(date, '%Y-%m-%d')
+                weekday_str = WEEKDAYS[dt_obj.weekday()]
+                date_display = f"{date} ({weekday_str})"
+                
                 embed = discord.Embed(title="📅 予定を追加しました", color=0x4285F4)
                 embed.add_field(name="内容", value=title, inline=False)
-                time_display = f"{date} {time}" if time else f"{date} (終日)"
+                time_display = f"{date_display} {time}" if time else f"{date_display} (終日)"
                 embed.add_field(name="日時", value=time_display, inline=True)
                 if url:
                     embed.add_field(name="リンク", value=f"[Googleカレンダーで確認]({url})", inline=True)
                 
                 await interaction.followup.send(embed=embed)
             except Exception as e:
-                await interaction.followup.send(f"❌ 追加エラー: 日付(YYYY-MM-DD)や時刻(HH:MM)が正しいか確認してください。\n`{e}`")
+                await interaction.followup.send(f"❌ 追加エラー: `{e}`")
 
         @app_commands.command(name="gcal_list", description="Googleカレンダーの予定を表示")
         @app_commands.choices(duration=[
@@ -147,13 +152,15 @@ def register_reminder_commands(bot, data_manager):
                         start_data = event['start'].get('dateTime', event['start'].get('date'))
                         
                         if 'T' in start_data:
-                            # 時間指定予定: MM/DD HH:MM
                             dt = datetime.fromisoformat(start_data).astimezone(JST)
-                            time_str = dt.strftime('%m/%d %H:%M')
+                            # MM/DD(曜) HH:MM
+                            weekday = WEEKDAYS[dt.weekday()]
+                            time_str = dt.strftime(f'%m/%d({weekday}) %H:%M')
                         else:
-                            # 終日予定: MM/DD (終日)
                             dt = datetime.strptime(start_data, '%Y-%m-%d')
-                            time_str = dt.strftime('%m/%d (終日)')
+                            # MM/DD(曜) (終日)
+                            weekday = WEEKDAYS[dt.weekday()]
+                            time_str = dt.strftime(f'%m/%d({weekday}) (終日)')
                         
                         embed.add_field(
                             name=f"{time_str} | {event['summary']}",
@@ -174,7 +181,7 @@ def register_reminder_commands(bot, data_manager):
                 gcal.delete_event(cal_id, event_id)
                 await interaction.followup.send(f"✅ 予定を削除しました。")
             except Exception as e:
-                await interaction.followup.send(f"❌ 削除失敗: IDを確認してください。")
+                await interaction.followup.send(f"❌ 削除失敗。")
 
     bot.tree.add_command(Reminder())
 
