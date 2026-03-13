@@ -11,7 +11,7 @@ from googleapiclient.discovery import build
 
 # JST タイムゾーン
 JST = timezone(timedelta(hours=9))
-SCOPES = ['https://https://www.googleapis.com/auth/calendar']
+SCOPES = ['https://www.googleapis.com/auth/calendar']
 WEEKDAYS = ["月", "火", "水", "木", "金", "土", "日"]
 
 WEATHER_CODES = {
