@@ -28,11 +28,9 @@ class GoogleCalendarManager:
             self.service = None
 
     def get_events(self, calendar_id, days=1):
-        """指定された日数分の予定を取得"""
         if not self.service: return []
         now = datetime.now(JST)
         time_min = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
-        # 終了日を設定
         end_date = now + timedelta(days=days-1)
         time_max = end_date.replace(hour=23, minute=59, second=59, microsecond=0).isoformat()
         
@@ -42,19 +40,28 @@ class GoogleCalendarManager:
         ).execute()
         return events_result.get('items', [])
 
-    def add_event(self, calendar_id, title, date_str, time_str):
+    def add_event(self, calendar_id, title, date_str, time_str=None):
         if not self.service: 
             raise Exception("Google API Service が初期化されていません。")
         
-        dt_str = f"{date_str}T{time_str}:00"
-        start_dt = datetime.fromisoformat(dt_str).replace(tzinfo=JST)
-        end_dt = start_dt + timedelta(hours=1)
-
-        event = {
-            'summary': title,
-            'start': {'dateTime': start_dt.isoformat(), 'timeZone': 'Asia/Tokyo'},
-            'end': {'dateTime': end_dt.isoformat(), 'timeZone': 'Asia/Tokyo'},
-        }
+        if time_str:
+            # 時間指定がある場合
+            dt_str = f"{date_str}T{time_str}:00"
+            start_dt = datetime.fromisoformat(dt_str).replace(tzinfo=JST)
+            end_dt = start_dt + timedelta(hours=1)
+            event = {
+                'summary': title,
+                'start': {'dateTime': start_dt.isoformat(), 'timeZone': 'Asia/Tokyo'},
+                'end': {'dateTime': end_dt.isoformat(), 'timeZone': 'Asia/Tokyo'},
+            }
+        else:
+            # 終日予定の場合
+            event = {
+                'summary': title,
+                'start': {'date': date_str},
+                'end': {'date': date_str},
+            }
+        
         return self.service.events().insert(calendarId=calendar_id, body=event).execute()
 
     def delete_event(self, calendar_id, event_id):
@@ -83,7 +90,6 @@ def register_reminder_commands(bot, data_manager):
             )
             await interaction.response.send_message(txt, ephemeral=True)
 
-        # --- Google Calendar コマンド ---
         @app_commands.command(name="gcal_set", description="GoogleカレンダーIDを設定")
         async def gcal_set(self, interaction: discord.Interaction, calendar_id: str):
             guild_data = data_manager.get_guild_data(interaction.guild_id)
@@ -91,8 +97,8 @@ def register_reminder_commands(bot, data_manager):
             await data_manager.save_all()
             await interaction.response.send_message(f"✅ カレンダーIDを設定しました")
 
-        @app_commands.command(name="gcal_add", description="Googleカレンダーに予定追加")
-        async def gcal_add(self, interaction: discord.Interaction, date: str, time: str, title: str):
+        @app_commands.command(name="gcal_add", description="予定追加 (時間を空にすると終日予定になります)")
+        async def gcal_add(self, interaction: discord.Interaction, date: str, title: str, time: str = None):
             guild_data = data_manager.get_guild_data(interaction.guild_id)
             cal_id = guild_data.get("google_calendar_id")
             if not cal_id:
@@ -106,13 +112,14 @@ def register_reminder_commands(bot, data_manager):
                 
                 embed = discord.Embed(title="📅 予定を追加しました", color=0x4285F4)
                 embed.add_field(name="内容", value=title, inline=False)
-                embed.add_field(name="日時", value=f"{date} {time}", inline=True)
+                time_display = f"{date} {time}" if time else f"{date} (終日)"
+                embed.add_field(name="日時", value=time_display, inline=True)
                 if url:
                     embed.add_field(name="リンク", value=f"[Googleカレンダーで確認]({url})", inline=True)
                 
                 await interaction.followup.send(embed=embed)
             except Exception as e:
-                await interaction.followup.send(f"❌ 追加エラー: {e}")
+                await interaction.followup.send(f"❌ 追加エラー: 日付(YYYY-MM-DD)や時刻(HH:MM)が正しいか確認してください。\n`{e}`")
 
         @app_commands.command(name="gcal_list", description="Googleカレンダーの予定を表示")
         @app_commands.choices(duration=[
@@ -130,7 +137,6 @@ def register_reminder_commands(bot, data_manager):
             await interaction.response.defer()
             try:
                 events = gcal.get_events(cal_id, days=duration)
-                
                 title_text = "今日の予定" if duration == 1 else f"今後 {duration} 日間の予定"
                 embed = discord.Embed(title=f"📅 {title_text}", color=0x4285F4)
 
@@ -138,13 +144,16 @@ def register_reminder_commands(bot, data_manager):
                     embed.description = "予定は見つかりませんでした。"
                 else:
                     for event in events:
-                        start = event['start'].get('dateTime', event['start'].get('date'))
-                        # 日付と時間の表示を整える
-                        if 'T' in start:
-                            dt = datetime.fromisoformat(start).astimezone(JST)
+                        start_data = event['start'].get('dateTime', event['start'].get('date'))
+                        
+                        if 'T' in start_data:
+                            # 時間指定予定: MM/DD HH:MM
+                            dt = datetime.fromisoformat(start_data).astimezone(JST)
                             time_str = dt.strftime('%m/%d %H:%M')
                         else:
-                            time_str = f"{start} (終日)"
+                            # 終日予定: MM/DD (終日)
+                            dt = datetime.strptime(start_data, '%Y-%m-%d')
+                            time_str = dt.strftime('%m/%d (終日)')
                         
                         embed.add_field(
                             name=f"{time_str} | {event['summary']}",
@@ -174,7 +183,6 @@ def register_reminder_commands(bot, data_manager):
         await bot.wait_until_ready()
         while not bot.is_closed():
             now = datetime.now(JST).replace(second=0, microsecond=0)
-            # 毎朝8時の通知
             if now.hour == 8 and now.minute == 0:
                 for guild in bot.guilds:
                     guild_data = data_manager.get_guild_data(guild.id)
@@ -186,11 +194,15 @@ def register_reminder_commands(bot, data_manager):
                             try:
                                 events = gcal.get_events(cal_id, days=1)
                                 if events:
-                                    embed = discord.Embed(title="☀️ おはようございます！今日の予定です", color=0x4285F4)
+                                    embed = discord.Embed(title="☀️ 今日の予定をお知らせします", color=0x4285F4)
                                     for e in events:
-                                        st = e['start'].get('dateTime', '終日')
-                                        if 'T' in st: st = st.split('T')[1][:5]
-                                        embed.add_field(name=st, value=e['summary'], inline=False)
+                                        start_data = e['start'].get('dateTime', e['start'].get('date'))
+                                        if 'T' in start_data:
+                                            dt = datetime.fromisoformat(start_data).astimezone(JST)
+                                            time_label = dt.strftime('%H:%M')
+                                        else:
+                                            time_label = "終日"
+                                        embed.add_field(name=f"【{time_label}】", value=e['summary'], inline=False)
                                     await channel.send(embed=embed)
                             except: pass
             await asyncio.sleep(55)
