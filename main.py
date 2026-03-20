@@ -1,4 +1,4 @@
-import os
+import os  # 小文字に修正
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
@@ -7,98 +7,94 @@ from flask import Flask
 import threading
 import requests
 import time
+import sys
 
-# 各機能（コマンド群）のインポート
+# 自身のユーティリティをインポート
 from utils.data_manager import DataManager
 from commands import utility, fun, reminder, todo
 
-# 非同期ループのネストを許可（Flaskとの共存用）
+# --- 初期設定 ---
 nest_asyncio.apply()
 load_dotenv()
 
-# 環境変数の読み込み
 TOKEN = os.getenv("TOKEN")
 PORT = int(os.getenv("PORT", 10000))
 SELF_URL = os.getenv("SELF_URL")
-DATA_CHANNEL_ID = int(os.getenv("DATA_CHANNEL_ID", 0))
+DATA_CHANNEL_ID_STR = os.getenv("DATA_CHANNEL_ID", "0")
 
-# Discord Botの権限設定
+# DATA_CHANNEL_IDが数字でない場合の対策
+try:
+    DATA_CHANNEL_ID = int(DATA_CHANNEL_ID_STR)
+except ValueError:
+    DATA_CHANNEL_ID = 0
+
+if not TOKEN:
+    print("❌ ERROR: TOKENが見つかりません。環境変数を確認してください。")
+    sys.exit(1)
+
+# --- Discord Bot 設定 ---
 intents = discord.Intents.default()
-intents.message_content = True  # メッセージ内容の取得を許可
-intents.members = True          # メンバー情報の取得を許可
+intents.message_content = True
+intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# 起動時の重複処理を防止するためのフラグ
-bot.initialized = False
-
-# --- Flask Server (Render等のスリープ防止用) ---
+# --- Flask Health Check (Render用) ---
 app = Flask(__name__)
 
 @app.route("/")
 def health():
-    return "Bot is alive!"
+    return "Bot is alive!", 200
 
 def run_flask():
-    """Flaskサーバーを別スレッドで実行"""
-    app.run(host="0.0.0.0", port=PORT)
+    print(f"📡 Flask server starting on port {PORT}...")
+    try:
+        app.run(host="0.0.0.0", port=PORT)
+    except Exception as e:
+        print(f"❌ Flask Error: {e}")
 
 def keep_alive():
-    """自分自身に定期的にアクセスしてスリープを防止"""
+    """スリープ防止用"""
+    if not SELF_URL:
+        print("⚠️ SELF_URLが設定されていないため、keep_aliveをスキップします。")
+        return
+    
+    time.sleep(20) # 起動直後は待機
     while True:
         try:
-            if SELF_URL:
-                requests.get(SELF_URL)
+            requests.get(SELF_URL, timeout=10)
+            # print("♻️ Keep-alive ping sent.")
         except Exception as e:
-            print(f"Keep-alive ping failed: {e}")
-        time.sleep(300) # 5分おきに実行
+            print(f"⚠️ Keep-alive Error: {e}")
+        time.sleep(300)
 
-# --- データ管理クラスの初期化 ---
+# --- Bot Events ---
 data_manager = DataManager(bot, DATA_CHANNEL_ID)
-
-# --- Botのイベント ---
+bot.initialized = False
 
 @bot.event
 async def on_ready():
-    """Bot起動時に実行される処理"""
     if not bot.initialized:
-        # 保存データの読み込み
+        print(f"⚙️ Initializing modules for {bot.user}...")
         await data_manager.load_files()
-        
-        # 各コマンドカテゴリーの登録
         utility.register_utility_commands(bot)
         fun.register_fun_commands(bot)
         reminder.register_reminder_commands(bot, data_manager)
         todo.register_todo_commands(bot, data_manager)
 
-        # スラッシュコマンドをDiscord側に同期
-        try:
-            synced = await bot.tree.sync()
-            print(f"Successfully synced {len(synced)} slash commands.")
-        except Exception as e:
-            print(f"Failed to sync commands: {e}")
-
+        await bot.tree.sync()
         bot.initialized = True
-        print(f"Logged in as {bot.user} (ID: {bot.user.id})")
-        print("------")
+        print(f"✅ Logged in as {bot.user} and commands synced!")
 
-# --- メイン処理 ---
-
-# main.py の下部（if __name__ == "__main__": 付近）を以下のように調整してみてください
-
+# --- 実行 ---
 if __name__ == "__main__":
-    # 1. 最初にポートをしっかり確認
-    port = int(os.environ.get("PORT", 10000))
+    # Flaskスレッド開始
+    t_flask = threading.Thread(target=run_flask, daemon=True)
+    t_flask.start()
     
-    # 2. Flaskを起動するスレッドを確実に開始
-    print(f"Starting Flask server on port {port}...")
-    flask_thread = threading.Thread(target=lambda: app.run(host="0.0.0.0", port=port), daemon=True)
-    flask_thread.start()
-    
-    # 3. keep_aliveも開始
-    threading.Thread(target=keep_alive, daemon=True).start()
-    
-    # 4. 最後にBotを起動（これはブロッキング処理なので最後にする）
-    try:
-        bot.run(TOKEN)
-    except Exception as e:
-        print(f"Bot failed to start: {e}")
+    # Keep-aliveスレッド開始
+    t_keep = threading.Thread(target=keep_alive, daemon=True)
+    t_keep.start()
+
+    # Discord Bot 実行
+    print("🚀 Starting Discord Bot...")
+    bot.run(TOKEN)
