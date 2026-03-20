@@ -83,15 +83,22 @@ async def on_ready():
 
 # --- メイン処理 ---
 
+# main.py の下部（if __name__ == "__main__": 付近）を以下のように調整してみてください
+
 if __name__ == "__main__":
-    # Flaskサーバーをバックグラウンドで起動
-    threading.Thread(target=run_flask, daemon=True).start()
+    # 1. 最初にポートをしっかり確認
+    port = int(os.environ.get("PORT", 10000))
     
-    # 自己スリープ防止のループをバックグラウンドで起動
+    # 2. Flaskを起動するスレッドを確実に開始
+    print(f"Starting Flask server on port {port}...")
+    flask_thread = threading.Thread(target=lambda: app.run(host="0.0.0.0", port=port), daemon=True)
+    flask_thread.start()
+    
+    # 3. keep_aliveも開始
     threading.Thread(target=keep_alive, daemon=True).start()
     
-    # Botの実行
-    if TOKEN:
+    # 4. 最後にBotを起動（これはブロッキング処理なので最後にする）
+    try:
         bot.run(TOKEN)
-    else:
-        print("Error: TOKEN is not set in environment variables.")
+    except Exception as e:
+        print(f"Bot failed to start: {e}")
