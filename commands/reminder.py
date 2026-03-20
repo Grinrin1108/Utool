@@ -153,6 +153,32 @@ class UniversalEditModal(ui.Modal, title="予定の編集"):
         except:
             await it.followup.send("❌ 更新に失敗しました。", ephemeral=True)
 
+# 編集モーダルを呼び出すためのクッションView
+class EditLaunchView(ui.View):
+    def __init__(self, gcal, cid, event_id, event_data):
+        super().__init__(timeout=180)
+        self.gcal, self.cid, self.event_id = gcal, cid, event_id
+        self.event_data = event_data
+
+    @ui.button(label="✍️ 編集画面を開く", style=discord.ButtonStyle.primary)
+    async def open_edit(self, it: discord.Interaction, button: ui.Button):
+        # 予定データの解析
+        start_data = self.event_data.get('start', {})
+        end_data = self.event_data.get('end', {})
+        
+        if 'dateTime' in start_data:
+            date_val = start_data['dateTime'][:10]
+            s_time = start_data['dateTime'][11:16]
+            e_time = end_data.get('dateTime', "")[11:16] if 'dateTime' in end_data else ""
+        else:
+            date_val = start_data.get('date', "")
+            s_time, e_time = "", ""
+
+        await it.response.send_modal(UniversalEditModal(
+            self.gcal, self.cid, self.event_id, 
+            self.event_data.get('summary', ''), date_val, s_time, e_time
+        ))
+
 class ReminderMenuView(ui.View):
     def __init__(self, gcal, dm):
         super().__init__(timeout=None)
@@ -197,41 +223,16 @@ class ReminderMenuView(ui.View):
             def __init__(self, gcal, cid):
                 super().__init__(); self.gcal, self.cid = gcal, cid
             async def on_submit(self, sit: discord.Interaction):
-                # 入力値を徹底的に掃除（空白、バッククォート、"ID: " という文字列を削除）
-                raw_input = self.ev_id_input.value.strip()
-                raw_id = re.sub(r'^.*?ID:\s*|[`\s]', '', raw_input)
-                
+                # ID入力後は一旦 defer して時間を稼ぐ（モーダル連鎖エラー防止）
+                await sit.response.defer(ephemeral=True)
+                raw_id = re.sub(r'^.*?ID:\s*|[`\s]', '', self.ev_id_input.value.strip())
                 try:
-                    # 1. Google APIから予定を取得
-                    try:
-                        event = self.gcal.service.events().get(calendarId=self.cid, eventId=raw_id).execute()
-                    except Exception as api_err:
-                        # ここで失敗する場合はID自体が間違っている可能性大
-                        return await sit.response.send_message(f"❌ Google側でIDが見つかりませんでした。\n(Error: `{api_err}`)", ephemeral=True)
-
-                    # 2. 時間情報の解析
-                    start_data = event.get('start', {})
-                    end_data = event.get('end', {})
-                    
-                    if 'dateTime' in start_data:
-                        # 時間指定の予定
-                        date_val = start_data['dateTime'][:10]
-                        s_time = start_data['dateTime'][11:16]
-                        e_time = end_data.get('dateTime', "")[11:16] if 'dateTime' in end_data else ""
-                    else:
-                        # 終日の予定
-                        date_val = start_data.get('date', "")
-                        s_time, e_time = "", ""
-
-                    # 3. 編集Modalを表示
-                    await sit.response.send_modal(UniversalEditModal(
-                        self.gcal, self.cid, raw_id, event.get('summary', ''), 
-                        date_val, s_time, e_time
-                    ))
+                    event = self.gcal.service.events().get(calendarId=self.cid, eventId=raw_id).execute()
+                    # ボタン付きメッセージを送る（ここがモーダル連鎖回避の鍵）
+                    emb = discord.Embed(title="🔍 予定が見つかりました", description=f"予定名: **{event.get('summary', '無題')}**\nこの予定を編集しますか？", color=0x3498db)
+                    await sit.followup.send(embed=emb, view=EditLaunchView(self.gcal, self.cid, raw_id, event), ephemeral=True)
                 except Exception as e:
-                    # 解析エラーなどの場合
-                    print(f"Parsing Error: {traceback.format_exc()}")
-                    await sit.response.send_message(f"❌ 解析エラーが発生しました: `{type(e).__name__}`", ephemeral=True)
+                    await sit.followup.send(f"❌ IDが見つかりません。正確にコピーしてください。\n`{e}`", ephemeral=True)
         await it.response.send_modal(EditIdModal(self.gcal, cid))
 
     @ui.button(label="🔍 予定を確認", style=discord.ButtonStyle.primary, emoji="📋")
@@ -276,27 +277,19 @@ def register_reminder_commands(bot, data_manager):
     class Reminder(app_commands.Group):
         def __init__(self): super().__init__(name="rem", description="カレンダー管理")
         
-        @app_commands.command(name="menu", description="操作パネルを表示（お掃除機能付き）")
+        @app_commands.command(name="menu", description="操作パネルを表示")
         async def menu(self, it: discord.Interaction):
-            # 1. 応答を保留（3秒ルール対策）
             await it.response.defer(ephemeral=False)
-            
             data = data_manager.get_guild_data(it.guild_id)
-            
-            # 2. お掃除機能：前回のメニューがあれば削除を試みる
             last_msg_id = data.get("last_menu_id")
             if last_msg_id:
                 try:
                     old_msg = await it.channel.fetch_message(last_msg_id)
                     await old_msg.delete()
-                except: pass # 削除できなくても次へ
-
-            # 3. 新しいパネルを送信
+                except: pass
             now = datetime.now(JST)
             emb = discord.Embed(title="🗓️ カレンダー操作パネル", description=f"現在は **{now.strftime('%Y/%m/%d')}** です。\n宮崎の天気と共に予定を管理します。", color=0x4285F4)
             msg = await it.followup.send(embed=emb, view=ReminderMenuView(gcal, data_manager))
-            
-            # 4. IDを保存して次回削除できるようにする
             data["last_menu_id"] = msg.id
             await data_manager.save_all()
 
@@ -309,7 +302,6 @@ def register_reminder_commands(bot, data_manager):
 
     bot.tree.add_command(Reminder())
 
-    # --- ループ処理 (ステータス & 通知) ---
     async def status_loop():
         await bot.wait_until_ready()
         while not bot.is_closed():
@@ -339,7 +331,6 @@ def register_reminder_commands(bot, data_manager):
         reminded_ids = set()
         while not bot.is_closed():
             now = datetime.now(JST)
-            # 朝6時の天気予報
             if now.hour == 6 and now.minute == 0:
                 weather = get_weather()
                 for gid, gdata in data_manager.data.items():
@@ -354,8 +345,6 @@ def register_reminder_commands(bot, data_manager):
                             emb.description = f"宮崎の天気: **{w}**\n\n" + ("\n".join(lines) if lines else "予定はありません。")
                             if ch: await ch.send(embed=emb)
                 await asyncio.sleep(60)
-            
-            # 10分前通知
             for gid, gdata in data_manager.data.items():
                 r = gdata.get("reminder", {})
                 if r.get("enabled"):
