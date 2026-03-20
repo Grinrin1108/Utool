@@ -197,18 +197,41 @@ class ReminderMenuView(ui.View):
             def __init__(self, gcal, cid):
                 super().__init__(); self.gcal, self.cid = gcal, cid
             async def on_submit(self, sit: discord.Interaction):
-                raw_id = self.ev_id_input.value.strip().replace("`", "")
+                # 入力値を徹底的に掃除（空白、バッククォート、"ID: " という文字列を削除）
+                raw_input = self.ev_id_input.value.strip()
+                raw_id = re.sub(r'^.*?ID:\s*|[`\s]', '', raw_input)
+                
                 try:
-                    event = self.gcal.service.events().get(calendarId=self.cid, eventId=raw_id).execute()
-                    start_data, end_data = event['start'], event['end']
+                    # 1. Google APIから予定を取得
+                    try:
+                        event = self.gcal.service.events().get(calendarId=self.cid, eventId=raw_id).execute()
+                    except Exception as api_err:
+                        # ここで失敗する場合はID自体が間違っている可能性大
+                        return await sit.response.send_message(f"❌ Google側でIDが見つかりませんでした。\n(Error: `{api_err}`)", ephemeral=True)
+
+                    # 2. 時間情報の解析
+                    start_data = event.get('start', {})
+                    end_data = event.get('end', {})
+                    
                     if 'dateTime' in start_data:
+                        # 時間指定の予定
                         date_val = start_data['dateTime'][:10]
-                        s_time, e_time = start_data['dateTime'][11:16], end_data['dateTime'][11:16] if 'dateTime' in end_data else None
+                        s_time = start_data['dateTime'][11:16]
+                        e_time = end_data.get('dateTime', "")[11:16] if 'dateTime' in end_data else ""
                     else:
-                        date_val, s_time, e_time = start_data.get('date', ""), None, None
-                    await sit.response.send_modal(UniversalEditModal(self.gcal, self.cid, raw_id, event.get('summary', ''), date_val, s_time, e_time))
-                except:
-                    await sit.response.send_message("❌ IDが見つからないか、解析に失敗しました。", ephemeral=True)
+                        # 終日の予定
+                        date_val = start_data.get('date', "")
+                        s_time, e_time = "", ""
+
+                    # 3. 編集Modalを表示
+                    await sit.response.send_modal(UniversalEditModal(
+                        self.gcal, self.cid, raw_id, event.get('summary', ''), 
+                        date_val, s_time, e_time
+                    ))
+                except Exception as e:
+                    # 解析エラーなどの場合
+                    print(f"Parsing Error: {traceback.format_exc()}")
+                    await sit.response.send_message(f"❌ 解析エラーが発生しました: `{type(e).__name__}`", ephemeral=True)
         await it.response.send_modal(EditIdModal(self.gcal, cid))
 
     @ui.button(label="🔍 予定を確認", style=discord.ButtonStyle.primary, emoji="📋")
