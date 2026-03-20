@@ -55,7 +55,11 @@ class GoogleCalendarManager:
         creds_json = os.getenv("GOOGLE_CREDENTIALS_JSON")
         if creds_json:
             try:
-                info = json.loads(creds_json)
+                # 改行文字が正しく解釈されない問題への対策を追加
+                info = json.loads(creds_json, strict=False)
+                if "private_key" in info:
+                    info["private_key"] = info["private_key"].replace("\\n", "\n")
+                
                 self.creds = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
                 self.service = build('calendar', 'v3', credentials=self.creds)
             except:
