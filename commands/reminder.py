@@ -7,6 +7,7 @@ import json
 import requests
 from datetime import datetime, timezone, timedelta
 import re
+import traceback
 
 # --- 設定項目 ---
 JST = timezone(timedelta(hours=9))
@@ -132,18 +133,18 @@ class UniversalEditModal(ui.Modal, title="予定の編集"):
     def __init__(self, gcal, cid, event_id, current_title, current_date, current_start, current_end):
         super().__init__()
         self.gcal, self.cid, self.event_id = gcal, cid, event_id
-        # タグ（[仕事]など）を抽出
+        
         self.tag = ""
-        match = re.match(r"(\[.*?\])\s*(.*)", current_title)
+        match = re.match(r"(\[.*?\])\s*(.*)", current_title or "")
         if match:
             self.tag, clean_title = match.groups()
             self.title_input.default = clean_title
         else:
-            self.title_input.default = current_title
+            self.title_input.default = current_title or ""
             
         self.date_input.default = current_date
-        if current_start: self.start_input.default = current_start
-        if current_end: self.end_input.default = current_end
+        self.start_input.default = current_start or ""
+        self.end_input.default = current_end or ""
 
     async def on_submit(self, it: discord.Interaction):
         await it.response.defer(ephemeral=True)
@@ -152,7 +153,7 @@ class UniversalEditModal(ui.Modal, title="予定の編集"):
             self.gcal.update_event(self.cid, self.event_id, final_title, self.date_input.value, self.start_input.value or None, self.end_input.value or None)
             await it.followup.send(f"✅ **{final_title}** に更新しました！", ephemeral=True)
         except:
-            await it.followup.send("❌ 更新に失敗しました。", ephemeral=True)
+            await it.followup.send("❌ 更新に失敗しました。形式を確認してください。", ephemeral=True)
 
 class ReminderMenuView(ui.View):
     def __init__(self, gcal, dm):
@@ -200,14 +201,32 @@ class ReminderMenuView(ui.View):
             async def on_submit(self, sit: discord.Interaction):
                 raw_id = self.ev_id_input.value.strip().replace("`", "")
                 try:
+                    # 予定の取得
                     event = self.gcal.service.events().get(calendarId=self.cid, eventId=raw_id).execute()
-                    start_raw = event['start'].get('dateTime', event['start'].get('date'))
-                    end_raw = event['end'].get('dateTime', event['end'].get('date'))
-                    date_val = start_raw[:10]
-                    s_time = start_raw[11:16] if ":" in start_raw else None
-                    e_time = end_raw[11:16] if ":" in end_raw else None
-                    await sit.response.send_modal(UniversalEditModal(self.gcal, self.cid, raw_id, event['summary'], date_val, s_time, e_time))
-                except: await sit.response.send_message("❌ IDが見つかりません。", ephemeral=True)
+                    
+                    # 時間情報の解析（ここを安全に修正）
+                    start_data = event['start']
+                    end_data = event['end']
+                    
+                    if 'dateTime' in start_data:
+                        # 時間指定の予定
+                        date_val = start_data['dateTime'][:10]
+                        s_time = start_data['dateTime'][11:16]
+                        e_time = end_data['dateTime'][11:16] if 'dateTime' in end_data else None
+                    else:
+                        # 終日の予定
+                        date_val = start_data.get('date', "")
+                        s_time = None
+                        e_time = None
+
+                    await sit.response.send_modal(UniversalEditModal(
+                        self.gcal, self.cid, raw_id, event.get('summary', ''), 
+                        date_val, s_time, e_time
+                    ))
+                except Exception as e:
+                    print(f"Edit Error: {e}")
+                    traceback.print_exc()
+                    await sit.response.send_message(f"❌ 予定の読み込みに失敗しました（ID間違い、または解析エラー）。", ephemeral=True)
         await it.response.send_modal(EditIdModal(self.gcal, cid))
 
     @ui.button(label="🔍 予定を確認", style=discord.ButtonStyle.primary, emoji="📋")
@@ -226,7 +245,12 @@ class ReminderMenuView(ui.View):
         for d, evs in sorted(grouped.items()):
             dt = datetime.strptime(d, '%Y-%m-%d')
             emb = discord.Embed(title=f"📅 {dt.strftime('%m/%d')} ({WEEKDAYS[dt.weekday()]})  宮崎: {weather.get(d, '')}", color=0x3498db)
-            emb.description = "\n".join([f"{'⏰' if ':' in e['start'].get('dateTime','') else '☀️'} `{e['start'].get('dateTime','終日')[11:16] if ':' in e['start'].get('dateTime','') else '終日'}` **{e['summary']}**\n└ ID: `{e['id']}`" for e in evs])
+            lines = []
+            for e in evs:
+                st = e['start'].get('dateTime', "終日")
+                time_str = f"`{st[11:16]}`" if ":" in st else "`終日`"
+                lines.append(f"{'⏰' if ':' in st else '☀️'} {time_str} **{e['summary']}**\n└ ID: `{e['id']}`")
+            emb.description = "\n".join(lines)
             embeds.append(emb)
         await it.followup.send(embeds=embeds[:10], ephemeral=True)
 
