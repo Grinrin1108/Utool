@@ -122,18 +122,17 @@ class UniversalAddModal(ui.Modal, title="予定の登録"):
             self.gcal.add_event(self.cid, tagged_title, self.date_input.value, self.start_input.value or None, self.end_input.value or None)
             await it.followup.send(f"✅ {self.genre['emoji']} **{tagged_title}** を登録しました！", ephemeral=True)
         except:
-            await it.followup.send("❌ 形式エラー。", ephemeral=True)
+            await it.followup.send("❌ 形式エラー。日付や時間を確認してください。", ephemeral=True)
 
 class UniversalEditModal(ui.Modal, title="予定の編集"):
     date_input = ui.TextInput(label="日付 (YYYY-MM-DD)")
-    title_input = ui.TextInput(label="タイトル（タグは自動維持されます）")
+    title_input = ui.TextInput(label="タイトル（タグは自動維持）")
     start_input = ui.TextInput(label="開始時間", required=False)
     end_input = ui.TextInput(label="終了時間", required=False)
 
     def __init__(self, gcal, cid, event_id, current_title, current_date, current_start, current_end):
         super().__init__()
         self.gcal, self.cid, self.event_id = gcal, cid, event_id
-        
         self.tag = ""
         match = re.match(r"(\[.*?\])\s*(.*)", current_title or "")
         if match:
@@ -141,7 +140,6 @@ class UniversalEditModal(ui.Modal, title="予定の編集"):
             self.title_input.default = clean_title
         else:
             self.title_input.default = current_title or ""
-            
         self.date_input.default = current_date
         self.start_input.default = current_start or ""
         self.end_input.default = current_end or ""
@@ -151,9 +149,9 @@ class UniversalEditModal(ui.Modal, title="予定の編集"):
         final_title = f"{self.tag} {self.title_input.value}" if self.tag else self.title_input.value
         try:
             self.gcal.update_event(self.cid, self.event_id, final_title, self.date_input.value, self.start_input.value or None, self.end_input.value or None)
-            await it.followup.send(f"✅ **{final_title}** に更新しました！", ephemeral=True)
+            await it.followup.send(f"✅ **{final_title}** に更新完了！", ephemeral=True)
         except:
-            await it.followup.send("❌ 更新に失敗しました。形式を確認してください。", ephemeral=True)
+            await it.followup.send("❌ 更新に失敗しました。", ephemeral=True)
 
 class ReminderMenuView(ui.View):
     def __init__(self, gcal, dm):
@@ -169,7 +167,7 @@ class ReminderMenuView(ui.View):
             await git.response.send_modal(UniversalAddModal(self.gcal, cid, genre_select.values[0], default_date=selected_date))
         genre_select.callback = genre_callback
         genre_view.add_item(genre_select)
-        await it.response.edit_message(content=f"📅 **{selected_date}** のジャンルを選択：", view=genre_view)
+        await it.response.edit_message(content=f"📅 **{selected_date}** の種別は？", view=genre_view)
 
     @ui.button(label="➕ 予定を追加", style=discord.ButtonStyle.success, emoji="📆")
     async def quick_add(self, it: discord.Interaction, button: ui.Button):
@@ -184,49 +182,33 @@ class ReminderMenuView(ui.View):
             await self.prompt_genre_selection(sit, cid, date_select.values[0])
         date_select.callback = date_callback
         date_view.add_item(date_select)
-        manual_btn = ui.Button(label="⌨️ 日付を直接入力する", style=discord.ButtonStyle.secondary)
+        manual_btn = ui.Button(label="⌨️ 直接入力", style=discord.ButtonStyle.secondary)
         async def manual_callback(sit: discord.Interaction):
             await self.prompt_genre_selection(sit, cid, now.strftime('%Y-%m-%d'))
         manual_btn.callback = manual_callback
         date_view.add_item(manual_btn)
-        await it.response.send_message("予定の追加：", view=date_view, ephemeral=True)
+        await it.response.send_message("予定の追加：日付を選択", view=date_view, ephemeral=True)
 
     @ui.button(label="📝 予定を編集", style=discord.ButtonStyle.secondary, emoji="✍️")
     async def edit_event(self, it: discord.Interaction, button: ui.Button):
         cid = self.dm.get_guild_data(it.guild_id).get("google_calendar_id")
-        class EditIdModal(ui.Modal, title="編集する予定の指定"):
+        class EditIdModal(ui.Modal, title="編集：ID指定"):
             ev_id_input = ui.TextInput(label="イベントIDを貼り付けてください", required=True)
             def __init__(self, gcal, cid):
                 super().__init__(); self.gcal, self.cid = gcal, cid
             async def on_submit(self, sit: discord.Interaction):
                 raw_id = self.ev_id_input.value.strip().replace("`", "")
                 try:
-                    # 予定の取得
                     event = self.gcal.service.events().get(calendarId=self.cid, eventId=raw_id).execute()
-                    
-                    # 時間情報の解析（ここを安全に修正）
-                    start_data = event['start']
-                    end_data = event['end']
-                    
+                    start_data, end_data = event['start'], event['end']
                     if 'dateTime' in start_data:
-                        # 時間指定の予定
                         date_val = start_data['dateTime'][:10]
-                        s_time = start_data['dateTime'][11:16]
-                        e_time = end_data['dateTime'][11:16] if 'dateTime' in end_data else None
+                        s_time, e_time = start_data['dateTime'][11:16], end_data['dateTime'][11:16] if 'dateTime' in end_data else None
                     else:
-                        # 終日の予定
-                        date_val = start_data.get('date', "")
-                        s_time = None
-                        e_time = None
-
-                    await sit.response.send_modal(UniversalEditModal(
-                        self.gcal, self.cid, raw_id, event.get('summary', ''), 
-                        date_val, s_time, e_time
-                    ))
-                except Exception as e:
-                    print(f"Edit Error: {e}")
-                    traceback.print_exc()
-                    await sit.response.send_message(f"❌ 予定の読み込みに失敗しました（ID間違い、または解析エラー）。", ephemeral=True)
+                        date_val, s_time, e_time = start_data.get('date', ""), None, None
+                    await sit.response.send_modal(UniversalEditModal(self.gcal, self.cid, raw_id, event.get('summary', ''), date_val, s_time, e_time))
+                except:
+                    await sit.response.send_message("❌ IDが見つからないか、解析に失敗しました。", ephemeral=True)
         await it.response.send_modal(EditIdModal(self.gcal, cid))
 
     @ui.button(label="🔍 予定を確認", style=discord.ButtonStyle.primary, emoji="📋")
@@ -235,7 +217,7 @@ class ReminderMenuView(ui.View):
         cid = self.dm.get_guild_data(it.guild_id).get("google_calendar_id")
         events = self.gcal.get_events(cid, days=7)
         weather = get_weather()
-        if not events: return await it.followup.send("✨ 予定なし。", ephemeral=True)
+        if not events: return await it.followup.send("✨ 予定はありません。", ephemeral=True)
         grouped = {}
         for e in events:
             d = e['start'].get('dateTime', e['start'].get('date'))[:10]
@@ -244,12 +226,8 @@ class ReminderMenuView(ui.View):
         embeds = []
         for d, evs in sorted(grouped.items()):
             dt = datetime.strptime(d, '%Y-%m-%d')
-            emb = discord.Embed(title=f"📅 {dt.strftime('%m/%d')} ({WEEKDAYS[dt.weekday()]})  宮崎: {weather.get(d, '')}", color=0x3498db)
-            lines = []
-            for e in evs:
-                st = e['start'].get('dateTime', "終日")
-                time_str = f"`{st[11:16]}`" if ":" in st else "`終日`"
-                lines.append(f"{'⏰' if ':' in st else '☀️'} {time_str} **{e['summary']}**\n└ ID: `{e['id']}`")
+            emb = discord.Embed(title=f"📅 {dt.strftime('%m/%d')} ({WEEKDAYS[dt.weekday()]}) 宮崎: {weather.get(d, '不明')}", color=0x3498db)
+            lines = [f"{'⏰' if ':' in e['start'].get('dateTime','') else '☀️'} `{e['start'].get('dateTime','終日')[11:16] if ':' in e['start'].get('dateTime','') else '終日'}` **{e['summary']}**\n└ ID: `{e['id']}`" for e in evs]
             emb.description = "\n".join(lines)
             embeds.append(emb)
         await it.followup.send(embeds=embeds[:10], ephemeral=True)
@@ -265,7 +243,7 @@ class ReminderMenuView(ui.View):
                 try:
                     self.gcal.service.events().delete(calendarId=self.cid, eventId=self.ev_id_input.value.strip().replace("`","")).execute()
                     await sit.response.send_message("🗑️ 削除完了。", ephemeral=True)
-                except: await sit.response.send_message("❌ 失敗。", ephemeral=True)
+                except: await sit.response.send_message("❌ 削除に失敗しました。", ephemeral=True)
         await it.response.send_modal(DelModal(self.gcal, cid))
 
 # --- コマンド登録・ループ ---
@@ -274,20 +252,41 @@ def register_reminder_commands(bot, data_manager):
 
     class Reminder(app_commands.Group):
         def __init__(self): super().__init__(name="rem", description="カレンダー管理")
-        @app_commands.command(name="menu", description="操作パネルを表示")
+        
+        @app_commands.command(name="menu", description="操作パネルを表示（お掃除機能付き）")
         async def menu(self, it: discord.Interaction):
-            emb = discord.Embed(title="🗓️ カレンダー操作パネル", description=f"宮崎の天気と共に予定を管理します。", color=0x4285F4)
-            await it.response.send_message(embed=emb, view=ReminderMenuView(gcal, data_manager))
+            # 1. 応答を保留（3秒ルール対策）
+            await it.response.defer(ephemeral=False)
+            
+            data = data_manager.get_guild_data(it.guild_id)
+            
+            # 2. お掃除機能：前回のメニューがあれば削除を試みる
+            last_msg_id = data.get("last_menu_id")
+            if last_msg_id:
+                try:
+                    old_msg = await it.channel.fetch_message(last_msg_id)
+                    await old_msg.delete()
+                except: pass # 削除できなくても次へ
+
+            # 3. 新しいパネルを送信
+            now = datetime.now(JST)
+            emb = discord.Embed(title="🗓️ カレンダー操作パネル", description=f"現在は **{now.strftime('%Y/%m/%d')}** です。\n宮崎の天気と共に予定を管理します。", color=0x4285F4)
+            msg = await it.followup.send(embed=emb, view=ReminderMenuView(gcal, data_manager))
+            
+            # 4. IDを保存して次回削除できるようにする
+            data["last_menu_id"] = msg.id
+            await data_manager.save_all()
 
         @app_commands.command(name="on", description="通知設定")
         async def on(self, it: discord.Interaction, calendar_id: str):
             data = data_manager.get_guild_data(it.guild_id)
             data.update({"google_calendar_id": calendar_id, "reminder": {"enabled": True, "channel_id": it.channel_id}})
             await data_manager.save_all()
-            await it.response.send_message("✅ 設定完了！")
+            await it.response.send_message("✅ 設定完了！", ephemeral=True)
 
     bot.tree.add_command(Reminder())
 
+    # --- ループ処理 (ステータス & 通知) ---
     async def status_loop():
         await bot.wait_until_ready()
         while not bot.is_closed():
@@ -317,6 +316,7 @@ def register_reminder_commands(bot, data_manager):
         reminded_ids = set()
         while not bot.is_closed():
             now = datetime.now(JST)
+            # 朝6時の天気予報
             if now.hour == 6 and now.minute == 0:
                 weather = get_weather()
                 for gid, gdata in data_manager.data.items():
@@ -331,6 +331,8 @@ def register_reminder_commands(bot, data_manager):
                             emb.description = f"宮崎の天気: **{w}**\n\n" + ("\n".join(lines) if lines else "予定はありません。")
                             if ch: await ch.send(embed=emb)
                 await asyncio.sleep(60)
+            
+            # 10分前通知
             for gid, gdata in data_manager.data.items():
                 r = gdata.get("reminder", {})
                 if r.get("enabled"):
