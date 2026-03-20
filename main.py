@@ -21,6 +21,7 @@ TOKEN = os.getenv("TOKEN")
 PORT = int(os.getenv("PORT", 10000))
 SELF_URL = os.getenv("SELF_URL")
 DATA_CHANNEL_ID_STR = os.getenv("DATA_CHANNEL_ID", "0")
+GOOGLE_CREDENTIALS_JSON = os.getenv("GOOGLE_CREDENTIALS_JSON")
 
 # DATA_CHANNEL_IDが数字でない場合の対策
 try:
