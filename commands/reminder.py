@@ -236,12 +236,14 @@ class ReminderMenuView(ui.View):
     async def list_events(self, it: discord.Interaction, button: ui.Button):
         await it.response.defer(ephemeral=True)
         cid = self.dm.get_guild_data(it.guild_id).get("google_calendar_id")
-        if not cid: return await it.followup.send("❌ 未設定です。", ephemeral=True)
+        if not cid: return await it.followup.send("❌ カレンダーが設定されていません。`/rem setup` を行ってください。", ephemeral=True)
 
         events = self.gcal.get_events(cid, days=7)
         weather = get_weather()
-        if not events: return await it.followup.send("✨ 予定はありません。", ephemeral=True)
+        if not events:
+            return await it.followup.send("✨ 今後7日間に予定はありません。ゆっくり休みましょう！", ephemeral=True)
 
+        # 日付ごとにグループ化
         grouped = {}
         for e in events:
             d = e['start'].get('dateTime', e['start'].get('date'))[:10]
@@ -251,14 +253,47 @@ class ReminderMenuView(ui.View):
         embeds = []
         for d, evs in sorted(grouped.items()):
             dt = datetime.strptime(d, '%Y-%m-%d')
-            emb = discord.Embed(title=f"📅 {dt.strftime('%m/%d')} ({WEEKDAYS[dt.weekday()]}) 宮崎: {weather.get(d, '不明')}", color=0x3498db)
-            lines = []
-            for e in evs:
-                time_str = e['start'].get('dateTime', '  終日  ')[11:16]
-                lines.append(f"⏰ `{time_str}` **{e['summary']}**\n└ ID: `{e['id']}`")
-            emb.description = "\n".join(lines)
+            date_str = f"{dt.strftime('%m/%d')} ({WEEKDAYS[dt.weekday()]})"
+            
+            # その日のEmbed作成（最初の予定のジャンル色を反映させるなど工夫可）
+            emb = discord.Embed(
+                title=f"📅 {date_str} ｜ {weather.get(d, '天気情報なし')}", 
+                color=0x4285F4 # Google Blue
+            )
+            
+            field_value = ""
+            for i, e in enumerate(evs):
+                title = e.get('summary', '無題')
+                
+                # --- ジャンル絵文字の特定 ---
+                emoji = "📝" # デフォルト
+                for key, info in GENRES.items():
+                    if info['tag'] in title:
+                        emoji = info['emoji']
+                        break
+                
+                # --- 時間表示の整形 (終日も時間指定と同じ幅に) ---
+                if 'dateTime' in e['start']:
+                    start_t = datetime.fromisoformat(e['start']['dateTime'].replace('Z', '+00:00')).astimezone(JST).strftime('%H:%M')
+                    end_t = datetime.fromisoformat(e['end']['dateTime'].replace('Z', '+00:00')).astimezone(JST).strftime('%H:%M')
+                    time_display = f"`{start_t} - {end_t}`"
+                else:
+                    # 終日の場合もバッククォートで幅を合わせる
+                    time_display = "`  終日予定  `"
+
+                # --- 1つの予定の表示ブロック ---
+                field_value += f"{emoji} **{title}**\n"
+                field_value += f"┗ {time_display}\n"
+                field_value += f"   ID: `{e['id']}`\n"
+                
+                # 予定の間に少し隙間を作る（最後の要素以外）
+                if i < len(evs) - 1:
+                    field_value += "\n"
+
+            emb.description = field_value
             embeds.append(emb)
         
+        # Discordの制限（一度に10個まで）を考慮して送信
         await it.followup.send(embeds=embeds[:10], ephemeral=True)
 
     @ui.button(label="🗑️ 予定を削除", style=discord.ButtonStyle.danger, emoji="🧹")
