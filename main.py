@@ -11,7 +11,7 @@ import sys
 
 # ユーティリティ
 from utils.data_manager import DataManager
-from commands import utility, fun, reminder, heip
+from commands import help, utility, fun, reminder
 
 load_dotenv()
 nest_asyncio.apply()
@@ -60,7 +60,7 @@ async def on_ready():
         utility.register_utility_commands(bot)
         fun.register_fun_commands(bot)
         reminder.register_reminder_commands(bot, data_manager)
-        heip.register_help_command(bot)
+        help.register_help_command(bot)
 
         await bot.tree.sync()
         bot.initialized = True
