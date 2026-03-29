@@ -242,7 +242,7 @@ class ReminderMenuView(ui.View):
             embeds.append(emb)
         await it.followup.send(embeds=embeds, ephemeral=True)
 
-    @ui.button(label="📝 編集/🗑️ 削除", style=discord.ButtonStyle.secondary, emoji="⚙️")
+    @ui.button(label="📝 編集/🗑️ 削除", style=discord.ButtonStyle.danger, emoji="⚙️")
     async def manage_event(self, it: discord.Interaction, button: ui.Button):
         data = self.dm.get_guild_data(it.guild_id)
         cids = data.get("calendar_ids", [])
