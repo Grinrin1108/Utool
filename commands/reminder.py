@@ -7,6 +7,7 @@ import requests
 from datetime import datetime, timezone, timedelta
 import re
 import traceback
+import random
 
 # --- 設定項目 ---
 JST = timezone(timedelta(hours=9))
@@ -310,24 +311,31 @@ def register_reminder_commands(bot, data_manager):
     # --- ループ処理 ---
     async def status_loop():
         await bot.wait_until_ready()
+        
+        # 切り替えるステータスのリスト
+        statuses = [
+            "宮崎の空を監視中 ☁️",
+            "チキン南蛮を食べています 🍗",
+            "完熟マンゴーを収穫中 🥭",
+            "青島で日向ぼっこ中 ☀️",
+            "地鶏の炭火焼きを調理中 🔥",
+            "高千穂峡でボート漕ぎ 🛶",
+            "宮崎牛でお祝い中 🐂",
+            "シーガイアでリゾート気分 🏖️",
+            "ハッキング中．．．💻",
+            "いたずら中... 😈"
+        ]
+        
         while not bot.is_closed():
-            current = "宮崎の空を監視中 ☁️"
-            for gid, gd in data_manager.data.items():
-                for cid in gd.get("calendar_ids", []):
-                    try:
-                        evs = gcal.get_events(cid, days=0)
-                        now = datetime.now(JST)
-                        for e in evs:
-                            st, et = e['start'].get('dateTime'), e['end'].get('dateTime')
-                            if st and et:
-                                s = datetime.fromisoformat(st.replace('Z', '+00:00')).astimezone(JST)
-                                n = datetime.fromisoformat(et.replace('Z', '+00:00')).astimezone(JST)
-                                if s <= now <= n:
-                                    current = f"進行中: {e['summary']}"
-                                    break
-                    except: pass
-            await bot.change_presence(activity=discord.Game(name=current))
-            await asyncio.sleep(600)
+            try:
+                # リストの中からランダムに1つ選ぶ
+                current_status = random.choice(statuses)
+                await bot.change_presence(activity=discord.Game(name=current_status))
+            except Exception as e:
+                print(f"❌ ステータス更新エラー: {e}")
+            
+            # 1時間(3600秒)ごとに切り替え
+            await asyncio.sleep(180)
 
     async def notification_loop():
         await bot.wait_until_ready()
