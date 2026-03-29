@@ -112,7 +112,7 @@ class GoogleCalendarManager:
 class UniversalAddModal(ui.Modal, title="予定の登録"):
     date_input = ui.TextInput(label="日付 (YYYY-MM-DD)", placeholder="2026-03-20")
     title_input = ui.TextInput(label="タイトル", placeholder="予定の内容", required=True)
-    start_input = ui.TextInput(label="開始時間 (25:00対応)", placeholder="19:00", required=False)
+    start_input = ui.TextInput(label="開始時間", placeholder="19:00", required=False)
     end_input = ui.TextInput(label="終了時間", placeholder="21:00", required=False)
 
     def __init__(self, gcal, cid, genre_key, default_date=""):
