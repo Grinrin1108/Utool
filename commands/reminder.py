@@ -343,7 +343,7 @@ def register_reminder_commands(bot, data_manager):
                     await old_msg.delete()
                 except: pass
 
-            emb = discord.Embed(title="🗓️ カレンダー操作パネル", description="予定の確認・追加・編集ができます。", color=0x4285F4, ephemeral=True)
+            emb = discord.Embed(title="🗓️ カレンダー操作パネル", description="予定の確認・追加・編集ができます。", color=0x4285F4)
             msg = await it.followup.send(embed=emb, view=ReminderMenuView(gcal, data_manager), ephemeral=True)
             data["last_menu_id"] = msg.id
             await data_manager.save_all()
