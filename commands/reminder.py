@@ -198,7 +198,7 @@ class ReminderMenuView(ui.View):
         now = datetime.now(JST)
         date_view = ui.View()
         date_select = ui.Select(placeholder="日付を選ぶ...")
-        for label, diff in [("今日", 0), ("明日", 1), ("明後日", 2), ("来週の今日", 7)]:
+        for label, diff in [("今日", 0), ("明日", 1), ("明後日", 2), ("明々後日", 3), ("4日後", 4), ("5日後", 5), ("6日後", 6), ("来週の今日", 7)]:
             d = (now + timedelta(days=diff))
             date_select.add_option(label=f"{label} ({d.strftime('%m/%d')})", value=d.strftime('%Y-%m-%d'))
         
