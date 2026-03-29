@@ -187,7 +187,7 @@ class ReminderMenuView(ui.View):
             await git.response.send_modal(UniversalAddModal(self.gcal, cid, genre_select.values[0], default_date=selected_date))
         genre_select.callback = genre_callback
         genre_view.add_item(genre_select)
-        await it.response.edit_message(content=f"📅 **{selected_date}** の種別は？", view=genre_view)
+        await it.response.edit_message(content=f"📅 **{selected_date}** の種類は？", view=genre_view)
 
     @ui.button(label="➕ 予定を追加", style=discord.ButtonStyle.success, emoji="📆")
     async def quick_add(self, it: discord.Interaction, button: ui.Button):
