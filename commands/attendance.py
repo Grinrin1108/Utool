@@ -42,7 +42,7 @@ def register_attendance_commands(bot, data_manager):
         today = datetime.now(JST).strftime('%Y-%m-%d')
         emb = discord.Embed(
             title=f"📅 {today} 出席確認",
-            description="今日の活動に参加できるか、下のボタンを押して教えてください！",
+            description="今日の活動に参加できるか、下のボタンを押して教えてください！ @everyone",
             color=0x3498db
         )
         await it.response.send_message(embed=emb, view=AttendanceView(data_manager, it.guild_id, today))
