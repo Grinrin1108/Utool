@@ -55,4 +55,4 @@ def register_help_command(bot):
         embed.set_footer(text="※使い方がわからない場合は、管理者に聞いてくださいね。")
         
         # ユーザーにだけ見えるようにしたい場合は ephemeral=True を追加
-        await interaction.response.send_message(embed=embed)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
