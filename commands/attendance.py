@@ -6,7 +6,7 @@ JST = timezone(timedelta(hours=9))
 
 class AttendanceView(ui.View):
     def __init__(self, data_manager, guild_id, date_str):
-        super().__init__(timeout=None) # 24時間受け付けるならNone
+        super().__init__(timeout=None)
         self.dm = data_manager
         self.guild_id = guild_id
         self.date_str = date_str
@@ -16,7 +16,6 @@ class AttendanceView(ui.View):
         if "attendance" not in data: data["attendance"] = {}
         if self.date_str not in data["attendance"]: data["attendance"][self.date_str] = {}
         
-        # ユーザーIDをキーに状態を保存
         user_name = it.user.display_name
         data["attendance"][self.date_str][str(it.user.id)] = {"name": user_name, "status": status}
         await self.dm.save_all()
@@ -27,7 +26,7 @@ class AttendanceView(ui.View):
     async def present(self, it: discord.Interaction, button: ui.Button):
         await self.update_attendance(it, "出席", "✅")
 
-    @ui.button(label="遅刻", style=discord.ButtonStyle.danger, emoji="⏳")
+    @ui.button(label="遅刻", style=discord.ButtonStyle.secondary, emoji="⏳") # ここを secondary(gray) に修正
     async def late(self, it: discord.Interaction, button: ui.Button):
         await self.update_attendance(it, "遅刻", "⏳")
 
