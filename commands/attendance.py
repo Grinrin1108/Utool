@@ -27,7 +27,7 @@ class AttendanceView(ui.View):
     async def present(self, it: discord.Interaction, button: ui.Button):
         await self.update_attendance(it, "出席", "✅")
 
-    @ui.button(label="遅刻", style=discord.ButtonStyle.warning, emoji="⏳")
+    @ui.button(label="遅刻", style=discord.ButtonStyle.danger, emoji="⏳")
     async def late(self, it: discord.Interaction, button: ui.Button):
         await self.update_attendance(it, "遅刻", "⏳")
 
