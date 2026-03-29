@@ -5,7 +5,7 @@ import discord
 def register_fun_commands(bot):
     @bot.tree.command(name="roll", description="サイコロを振ります (例: 2d6)")
     async def roll(interaction: discord.Interaction, dice: str):
-        await interaction.response.defer()
+        await interaction.response.defer(ephemeral=True)
         try:
             rolls, limit = map(int, dice.lower().split('d'))
         except:
@@ -16,7 +16,7 @@ def register_fun_commands(bot):
 
     @bot.tree.command(name="poll", description="投票を作成します")
     async def poll(interaction: discord.Interaction, question: str, option1: str, option2: str, option3: str = None, option4: str = None):
-        await interaction.response.defer()
+        await interaction.response.defer(ephemeral=True)
         options = [opt for opt in [option1, option2, option3, option4] if opt]
         if len(options) < 2:
             await interaction.followup.send("選択肢は2つ以上必要です。", ephemeral=True)

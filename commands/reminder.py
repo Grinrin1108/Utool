@@ -192,7 +192,7 @@ class ReminderMenuView(ui.View):
         genre_view.add_item(genre_select)
         await it.response.edit_message(content=f"📅 **{selected_date}** の種別は？", view=genre_view)
 
-    @ui.button(label="➕ 予定を追加", style=discord.ButtonStyle.success, emoji="📆", ephemeral=True)
+    @ui.button(label="➕ 予定を追加", style=discord.ButtonStyle.success, emoji="📆")
     async def quick_add(self, it: discord.Interaction, button: ui.Button):
         cid = self.dm.get_guild_data(it.guild_id).get("google_calendar_id")
         if not cid: return await it.response.send_message("❌ 先に `/rem setup` でカレンダーIDを設定してください。", ephemeral=True)
@@ -211,7 +211,7 @@ class ReminderMenuView(ui.View):
         
         await it.response.send_message("予定の追加：日付を選択", view=date_view, ephemeral=True)
 
-    @ui.button(label="📝 予定を編集", style=discord.ButtonStyle.secondary, emoji="✍️", ephemeral=True)
+    @ui.button(label="📝 予定を編集", style=discord.ButtonStyle.secondary, emoji="✍️")
     async def edit_event(self, it: discord.Interaction, button: ui.Button):
         cid = self.dm.get_guild_data(it.guild_id).get("google_calendar_id")
         if not cid: return await it.response.send_message("❌ 未設定です。", ephemeral=True)
@@ -232,7 +232,7 @@ class ReminderMenuView(ui.View):
         
         await it.response.send_modal(EditIdModal(self.gcal, cid))
 
-    @ui.button(label="🔍 予定を確認", style=discord.ButtonStyle.primary, emoji="📋", ephemeral=True)
+    @ui.button(label="🔍 予定を確認", style=discord.ButtonStyle.primary, emoji="📋")
     async def list_events(self, it: discord.Interaction, button: ui.Button):
         await it.response.defer(ephemeral=True)
         cid = self.dm.get_guild_data(it.guild_id).get("google_calendar_id")
@@ -296,7 +296,7 @@ class ReminderMenuView(ui.View):
         # Discordの制限（一度に10個まで）を考慮して送信
         await it.followup.send(embeds=embeds[:10], ephemeral=True)
 
-    @ui.button(label="🗑️ 予定を削除", style=discord.ButtonStyle.danger, emoji="🧹", ephemeral=True)
+    @ui.button(label="🗑️ 予定を削除", style=discord.ButtonStyle.danger, emoji="🧹")
     async def delete_event(self, it: discord.Interaction, button: ui.Button):
         cid = self.dm.get_guild_data(it.guild_id).get("google_calendar_id")
         if not cid: return await it.response.send_message("❌ 未設定です。", ephemeral=True)
@@ -333,7 +333,7 @@ def register_reminder_commands(bot, data_manager):
 
         @app_commands.command(name="menu", description="操作パネルを表示")
         async def menu(self, it: discord.Interaction):
-            await it.response.defer()
+            await it.response.defer(ephemeral=True)
             data = data_manager.get_guild_data(it.guild_id)
             
             # 古いメッセージがあれば削除してお掃除

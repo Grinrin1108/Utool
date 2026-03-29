@@ -16,7 +16,7 @@ def register_utility_commands(bot):
             value=member.created_at.astimezone(JST).strftime("%Y-%m-%d %H:%M:%S")
         )
         embed.set_thumbnail(url=member.avatar.url if member.avatar else None)
-        await interaction.response.send_message(embed=embed)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @bot.tree.command(name="serverinfo", description="サーバー情報を表示します")
     async def serverinfo(interaction: discord.Interaction):
@@ -29,14 +29,14 @@ def register_utility_commands(bot):
             value=guild.created_at.astimezone(JST).strftime("%Y-%m-%d %H:%M:%S")
         )
         embed.set_thumbnail(url=guild.icon.url if guild.icon else None)
-        await interaction.response.send_message(embed=embed)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @bot.tree.command(name="avatar", description="ユーザーのアバターを表示します")
     async def avatar(interaction: discord.Interaction, member: discord.Member = None):
         member = member or interaction.user
         embed = discord.Embed(title=f"{member}'s Avatar")
         embed.set_image(url=member.avatar.url if member.avatar else None)
-        await interaction.response.send_message(embed=embed)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @bot.tree.command(name="clear", description="チャンネルのメッセージを削除します（管理者専用）")
     async def clear(interaction: discord.Interaction, amount: int = 5):
