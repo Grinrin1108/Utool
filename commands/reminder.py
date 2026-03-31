@@ -308,42 +308,41 @@ def register_reminder_commands(bot, data_manager):
 
         @app_commands.command(name="test", description="【管理者用】設定が正しいか今すぐ通知テストを行います")
         async def rem_test(self, it: discord.Interaction):
-            # 権限チェック（管理者のみ実行可能にする場合）
             if not it.user.guild_permissions.manage_guild:
                 return await it.response.send_message("このコマンドはサーバー管理者のみ実行できます。", ephemeral=True)
 
-            await it.response.defer(ephemeral=True) # 処理に時間がかかるので「考え中...」にする
+            await it.response.defer(ephemeral=True)
 
             gid = str(it.guild_id)
             gdata = data_manager.get_guild_data(gid)
-            
-            # 設定の読み込み
             cids = gdata.get("calendar_ids", [])
             reminder_conf = gdata.get("reminder", {})
             target_ch_id = reminder_conf.get("channel_id")
             
-            # チェック1：設定が入っているか
             if not cids or not target_ch_id:
-                return await it.followup.send(
-                    "❌ 設定が足りません！\n"
-                    f"・カレンダーID: {'設定済み' if cids else '❌未設定'}\n"
-                    f"・通知チャンネル: {'設定済み' if target_ch_id else '❌未設定'}\n"
-                    " `/rem menu` から設定してください。"
-                )
+                return await it.followup.send("❌ 設定が足りません。`/rem menu` から設定してください。")
 
             target_ch = bot.get_channel(target_ch_id)
             if not target_ch:
-                return await it.followup.send(f"❌ 指定されたチャンネル（ID: {target_ch_id}）が見つかりません。Botに閲覧権限があるか確認してください。")
+                return await it.followup.send("❌ 指定されたチャンネルが見つかりません。")
 
-            # 通知内容の作成（朝7時のロジックを再現）
             try:
-                # 天気取得
-                w = get_weather()
+                # --- ここから修正：今日の日付を取得 ---
+                now = datetime.now(JST)
+                today = now.strftime('%Y-%m-%d')
+
+                # 天気取得（辞書から「今日」の分だけを取り出す）
+                weather_forecast = get_weather()
+                w = weather_forecast.get(today, "取得失敗")
                 
                 lines = []
                 for cid in cids:
+                    # カレンダーから予定を取得
                     events = gcal.get_events(cid, days=1)
-                    for e in events:
+                    # 「今日」の日付から始まる予定だけに絞り込む
+                    today_evs = [e for e in events if e['start'].get('dateTime', e['start'].get('date'))[:10] == today]
+                    
+                    for e in today_evs:
                         start_str = ""
                         st = e['start'].get('dateTime') or e['start'].get('date')
                         if 'T' in st:
@@ -361,15 +360,15 @@ def register_reminder_commands(bot, data_manager):
                         lines.append(f"{emoji} **{start_str}** {summary}")
 
                 # 送信
-                emb = discord.Embed(title=f"📢 【テスト】今日の予定", color=0x3498db)
-                emb.description = f"宮崎の天気: **{w}**\n\n" + ("\n".join(lines) if lines else "予定はありません。")
+                emb = discord.Embed(title=f"☀️ {now.strftime('%m/%d')} 今日の予定（テスト）", color=0xf1c40f)
+                emb.description = f"宮崎の天気: **{w}**\n\n" + ("\n".join(lines) if lines else "今日の予定はありません。")
                 
                 await target_ch.send(embed=emb)
-                await it.followup.send(f"✅ <#{target_ch_id}> にテスト通知を送信しました！内容を確認してください。")
+                await it.followup.send(f"✅ <#{target_ch_id}> に「今日だけ」の通知を送信しました！")
 
             except Exception as e:
                 print(traceback.format_exc())
-                await it.followup.send(f"❌ エラーが発生しました: `{e}`\nGoogleカレンダーの共有設定などを確認してください。")
+                await it.followup.send(f"❌ エラーが発生しました: `{e}`")
 
     bot.tree.add_command(Reminder())
 
