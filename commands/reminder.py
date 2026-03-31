@@ -306,6 +306,71 @@ def register_reminder_commands(bot, data_manager):
             emb = discord.Embed(title="🗓️ カレンダー操作パネル", description="複数カレンダー対応・予定の管理が可能です。", color=0x4285F4)
             await it.response.send_message(embed=emb, view=ReminderMenuView(gcal, data_manager), ephemeral=True)
 
+        @app_commands.command(name="test", description="【管理者用】設定が正しいか今すぐ通知テストを行います")
+        async def rem_test(self, it: discord.Interaction):
+            # 権限チェック（管理者のみ実行可能にする場合）
+            if not it.user.guild_permissions.manage_guild:
+                return await it.response.send_message("このコマンドはサーバー管理者のみ実行できます。", ephemeral=True)
+
+            await it.response.defer(ephemeral=True) # 処理に時間がかかるので「考え中...」にする
+
+            gid = str(it.guild_id)
+            gdata = data_manager.get_guild_data(gid)
+            
+            # 設定の読み込み
+            cids = gdata.get("calendar_ids", [])
+            reminder_conf = gdata.get("reminder", {})
+            target_ch_id = reminder_conf.get("channel_id")
+            
+            # チェック1：設定が入っているか
+            if not cids or not target_ch_id:
+                return await it.followup.send(
+                    "❌ 設定が足りません！\n"
+                    f"・カレンダーID: {'設定済み' if cids else '❌未設定'}\n"
+                    f"・通知チャンネル: {'設定済み' if target_ch_id else '❌未設定'}\n"
+                    " `/rem menu` から設定してください。"
+                )
+
+            target_ch = bot.get_channel(target_ch_id)
+            if not target_ch:
+                return await it.followup.send(f"❌ 指定されたチャンネル（ID: {target_ch_id}）が見つかりません。Botに閲覧権限があるか確認してください。")
+
+            # 通知内容の作成（朝7時のロジックを再現）
+            try:
+                # 天気取得
+                w = get_weather()
+                
+                lines = []
+                for cid in cids:
+                    events = gcal.get_events(cid, days=1)
+                    for e in events:
+                        start_str = ""
+                        st = e['start'].get('dateTime') or e['start'].get('date')
+                        if 'T' in st:
+                            dt = datetime.fromisoformat(st.replace('Z', '+00:00')).astimezone(JST)
+                            start_str = dt.strftime('%H:%M')
+                        else:
+                            start_str = "終日"
+                        
+                        summary = e.get('summary', '無題')
+                        emoji = "🔹"
+                        for k, info in GENRES.items():
+                            if info["tag"] in summary:
+                                emoji = info["emoji"]
+                                break
+                        lines.append(f"{emoji} **{start_str}** {summary}")
+
+                # 送信
+                emb = discord.Embed(title=f"📢 【テスト】今日の予定", color=0x3498db)
+                emb.description = f"宮崎の天気: **{w}**\n\n" + ("\n".join(lines) if lines else "予定はありません。")
+                
+                await target_ch.send(embed=emb)
+                await it.followup.send(f"✅ <#{target_ch_id}> にテスト通知を送信しました！内容を確認してください。")
+
+            except Exception as e:
+                print(traceback.format_exc())
+                await it.followup.send(f"❌ エラーが発生しました: `{e}`\nGoogleカレンダーの共有設定などを確認してください。")
+
     bot.tree.add_command(Reminder())
 
     # --- ループ処理 ---
