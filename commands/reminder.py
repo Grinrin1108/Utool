@@ -8,6 +8,7 @@ from datetime import datetime, timezone, timedelta
 import re
 import traceback
 import random
+import csv
 
 # --- 設定項目 ---
 JST = timezone(timedelta(hours=9))
@@ -29,6 +30,29 @@ WEATHER_CODES = {
     61: "☔雨", 63: "☔雨", 65: "☔激しい雨", 71: "❄️雪", 73: "❄️雪", 75: "❄️激しい雪",
     80: "🌦️にわか雨", 81: "🌦️にわか雨", 82: "🌦️激しいにわか雨", 95: "⚡雷雨"
 }
+
+# --- 雑学取得関数 ---
+def get_trivia():
+    now = datetime.now(JST)
+    # CSVのA列に合わせて「3/31」のような形式の文字列を作る
+    today_str = f"{now.month}/{now.day}"
+    
+    # 雑学ファイルのパス（ファイル名は trivia.csv と仮定します）
+    file_path = "trivia.csv" 
+    
+    if not os.path.exists(file_path):
+        return None
+
+    try:
+        # エンコーディングは、Excelで作ったCSVなら 'utf-8-sig' か 'cp932' が一般的です
+        with open(file_path, "r", encoding="utf-8-sig") as f:
+            reader = csv.reader(f)
+            for row in reader:
+                if len(row) >= 2 and row[0] == today_str:
+                    return row[1] # B列の雑学内容を返す
+    except Exception as e:
+        print(f"❌ 雑学取得エラー: {e}")
+    return None
 
 # --- ヘルパー関数 ---
 
@@ -334,6 +358,9 @@ def register_reminder_commands(bot, data_manager):
                 # 天気取得（辞書から「今日」の分だけを取り出す）
                 weather_forecast = get_weather()
                 w = weather_forecast.get(today, "取得失敗")
+
+                # 雑学を取得
+                trivia = get_trivia()
                 
                 lines = []
                 for cid in cids:
@@ -361,7 +388,7 @@ def register_reminder_commands(bot, data_manager):
 
                 # 送信
                 emb = discord.Embed(title=f"☀️ {now.strftime('%m/%d')} 今日の予定（テスト）", color=0xf1c40f)
-                emb.description = f"宮崎の天気: **{w}**\n\n" + ("\n".join(lines) if lines else "今日の予定はありません。")
+                emb.description = f"宮崎の天気: **{w}**\n\n" + ("\n".join(lines) if lines else "今日の予定はありません。") + (f"\n\n💡 今日の雑学: {trivia}" if trivia else "")
                 
                 await target_ch.send(embed=emb)
                 await it.followup.send(f"✅ <#{target_ch_id}> に「今日だけ」の通知を送信しました！")
@@ -415,19 +442,35 @@ def register_reminder_commands(bot, data_manager):
                 cids = gd.get("calendar_ids", [])
                 if not ch or not cids: continue
 
-                # 朝7時の通知
-                if now.hour == 7 and now.minute == 0 and last_morning != today:
+                # 朝6時の通知
+                if now.hour == 6 and now.minute == 0 and last_morning != today:
                     weather = get_weather()
+                    trivia = get_trivia()
                     all_evs = []
                     for cid in cids: all_evs.extend(gcal.get_events(cid, days=1))
                     today_evs = [e for e in all_evs if e['start'].get('dateTime', e['start'].get('date'))[:10] == today]
-                    if today_evs:
+                    if today_evs or trivia:
                         today_evs.sort(key=lambda x: x['start'].get('dateTime', x['start'].get('date')))
-                        emb = discord.Embed(title=f"☀️ {now.strftime('%m/%d')} 今日の予定", color=0xf1c40f)
+                        emb = discord.Embed(title=f"☀️ {now.strftime('%m/%d')} 今日の通知", color=0xf1c40f)
                         w = weather.get(today, "取得失敗")
                         lines = [f"・`{e['start'].get('dateTime','     ')[11:16] or ' 終日 '}` **{e.get('summary')}**" for e in today_evs]
-                        emb.description = f"宮崎の天気: **{w}**\n\n" + "\n".join(lines)
+                        
+                        # --- 説明文(description)の組み立て ---
+                        desc = f"宮崎の天気: **{w}**\n\n"
+                        
+                        if lines:
+                            desc += "\n".join(lines)
+                        else:
+                            desc += "今日の予定はありません。"
+                        
+                        if trivia:
+                            desc += f"\n\n💡 今日の雑学: {trivia}"
+                        # ------------------------------------
+                        
+                        emb.description = desc
                         await ch.send(embed=emb)
+                    
+                    # 全てのギルドの処理が終わったらフラグを立てる
                     if gid == list(data_manager.data.keys())[-1]: last_morning = today
 
                 # 10分前通知
