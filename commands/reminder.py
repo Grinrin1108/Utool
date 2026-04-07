@@ -66,6 +66,23 @@ def parse_extended_datetime(date_str, time_str):
     return base_dt + timedelta(days=(hours // 24)) + timedelta(hours=(hours % 24), minutes=minutes)
 
 # --- 天気予報取得関数 ---
+def get_weather():
+    try:
+        url = "https://api.open-meteo.com/v1/forecast?latitude=31.9111&longitude=131.4239&daily=weathercode,temperature_2m_max,temperature_2m_min&timezone=Asia%2FTokyo"
+        r = requests.get(url, timeout=5).json()
+        forecast = {}
+        for i, d in enumerate(r['daily']['time']):
+            code = r['daily']['weathercode'][i]
+            w_text = WEATHER_CODES.get(code, "❓")
+            t_max = r['daily']['temperature_2m_max'][i]
+            t_min = r['daily']['temperature_2m_min'][i]
+            forecast[d] = f"{w_text} ({t_max}℃/{t_min}℃)"
+        return forecast
+    except:
+        return {}
+    
+
+# --- 通知用Embed作成関数 ---
 def create_daily_embed(now, weather_forecast, trivia, all_evs, is_test=False):
     today_str = now.strftime('%Y-%m-%d')
     wd = WEEKDAYS[now.weekday()]
