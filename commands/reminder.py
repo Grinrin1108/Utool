@@ -135,15 +135,11 @@ def create_daily_embed(now, weather_forecast, trivia, all_evs, is_test=False):
     # フィールド1：今日の天気と予定
     weather_text = f"宮崎の天気: **{w}**\n\n"
     content = weather_text + ("\n".join(today_lines) if today_lines else "今日の予定はありません。")
-    emb.add_field(name="📌 今日の詳細", value=content, inline=False)
-
-    emb.add_field(value="\n")
+    emb.add_field(name="📌 今日の詳細", value=content+"\n", inline=False)
 
     # フィールド2：1週間のサマリー
     if upcoming_lines:
-        emb.add_field(name="🗓️ 今後の予定 (直近5件)", value="\n".join(upcoming_lines), inline=False)
-
-    emb.add_field(value="\n")
+        emb.add_field(name="🗓️ 今後の予定 (直近5件)", value="\n".join(upcoming_lines)+"\n", inline=False)
 
     # 雑学（フッター的に最後に配置）
     if trivia:
