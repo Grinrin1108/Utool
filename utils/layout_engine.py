@@ -55,7 +55,7 @@ class HTMLLayoutEngine:
             ev_lines.append(f"{time_str} ┃ {emoji} {summary}")
         
         schedule_md = "```md\n" + ("\n".join(ev_lines) if ev_lines else "✨ 予定なし") + "\n```"
-        emb.add_field(name="▽ Today's Schedule", value=schedule_md, inline=False)
+        emb.add_field(name="▽ 今日の予定", value=schedule_md, inline=False)
 
         # セクション3: 週間予定
         weekly_lines = []
@@ -66,7 +66,7 @@ class HTMLLayoutEngine:
             weekly_lines.append(f"{mark} {d_dt.strftime('%m/%d')}: {e.get('summary')}")
         
         weekly_md = "```\n" + ("\n".join(weekly_lines) if weekly_lines else "予定なし") + "\n```"
-        emb.add_field(name="▽ Weekly Overview", value=weekly_md, inline=False)
+        emb.add_field(name="▽ 今週の予定", value=weekly_md, inline=False)
 
         emb.set_footer(text="by Utool")
         return emb
