@@ -55,7 +55,6 @@ def get_trivia():
     return None
 
 # --- ヘルパー関数 ---
-
 def parse_extended_datetime(date_str, time_str):
     """25:00 などの表記を翌日として処理する"""
     base_dt = datetime.strptime(date_str, '%Y-%m-%d').replace(tzinfo=JST)
@@ -66,6 +65,7 @@ def parse_extended_datetime(date_str, time_str):
     hours, minutes = map(int, match.groups())
     return base_dt + timedelta(days=(hours // 24)) + timedelta(hours=(hours % 24), minutes=minutes)
 
+# --- 天気予報取得関数 ---
 def get_weather():
     try:
         url = "https://api.open-meteo.com/v1/forecast?latitude=31.9111&longitude=131.4239&daily=weathercode,temperature_2m_max,temperature_2m_min&timezone=Asia%2FTokyo"
@@ -81,29 +81,48 @@ def get_weather():
     except:
         return {}
 
+# --- 通知用Embed作成関数 ---
 def create_daily_embed(now, weather_forecast, trivia, all_evs, is_test=False):
     """
-    今日の日付、天気、雑学、予定リストから通知用Embedを作成する共通関数
+    今日の日付、天気、雑学、今日の詳細予定、および1週間の簡易予定Embedを作成する
     """
-    today = now.strftime('%Y-%m-%d')
-    # 「今日」の予定だけに絞り込んで時間をソート
-    today_evs = [e for e in all_evs if e['start'].get('dateTime', e['start'].get('date'))[:10] == today]
+    today_date_str = now.strftime('%Y-%m-%d')
+    title_suffix = "（テスト）" if is_test else ""
+    
+    # 1. 今日の予定を抽出・ソート
+    today_evs = [e for e in all_evs if e['start'].get('dateTime', e['start'].get('date'))[:10] == today_date_str]
     today_evs.sort(key=lambda x: x['start'].get('dateTime', x['start'].get('date')))
 
-    # 天気とタイトル
-    w = weather_forecast.get(today, "取得失敗")
-    title_suffix = "（テスト）" if is_test else ""
-    emb = discord.Embed(title=f"📆 {now.strftime('%m/%d')} 今日の通知{title_suffix}", color=0xf1c40f)
+    # 2. 向こう1週間の予定をグループ化 (今日を含まない明日以降)
+    upcoming_lines = []
+    future_evs = [e for e in all_evs if e['start'].get('dateTime', e['start'].get('date'))[:10] > today_date_str]
+    future_evs.sort(key=lambda x: x['start'].get('dateTime', x['start'].get('date')))
+    
+    # 直近5件程度を表示
+    for e in future_evs[:5]:
+        d_raw = e['start'].get('dateTime', e['start'].get('date'))[:10]
+        dt = datetime.strptime(d_raw, '%Y-%m-%d')
+        day_str = dt.strftime('%m/%d')
+        wd = WEEKDAYS[dt.weekday()]
+        summary = e.get('summary', '無題')
+        upcoming_lines.append(f"・`{day_str}({wd})` **{summary}**")
 
-    # 予定行の作成
-    lines = []
+    # --- Embedの構築 ---
+    w = weather_forecast.get(today_date_str, "取得失敗")
+    emb = discord.Embed(
+        title=f"📅 {now.strftime('%m/%d')} ({WEEKDAYS[now.weekday()]}) の通知{title_suffix}", 
+        color=0xf1c40f
+    )
+
+    # 【メイン：今日の予定詳細】
+    today_lines = []
     for e in today_evs:
         st = e['start'].get('dateTime') or e['start'].get('date')
         if 'T' in st:
             dt = datetime.fromisoformat(st.replace('Z', '+00:00')).astimezone(JST)
-            start_str = dt.strftime('%H:%M')
+            time_str = dt.strftime('%H:%M')
         else:
-            start_str = "終日"
+            time_str = "終日"
         
         summary = e.get('summary', '無題')
         emoji = "🔹"
@@ -111,19 +130,21 @@ def create_daily_embed(now, weather_forecast, trivia, all_evs, is_test=False):
             if info["tag"] in summary:
                 emoji = info["emoji"]
                 break
-        lines.append(f"{emoji} **{start_str}** {summary}")
+        today_lines.append(f"{emoji} **{time_str}** — {summary}")
 
-    # 説明文の組み立て
-    desc = f"宮崎の天気: **{w}**\n\n"
-    if lines:
-        desc += "\n".join(lines)
-    else:
-        desc += "今日の予定はありません。"
-    
+    # フィールド1：今日の天気と予定
+    weather_text = f"宮崎の天気: **{w}**\n\n"
+    content = weather_text + ("\n".join(today_lines) if today_lines else "今日の予定はありません。")
+    emb.add_field(name="📌 今日の詳細", value=content, inline=False)
+
+    # フィールド2：1週間のサマリー
+    if upcoming_lines:
+        emb.add_field(name="🗓️ 今後の予定 (直近5件)", value="\n".join(upcoming_lines), inline=False)
+
+    # 雑学（フッター的に最後に配置）
     if trivia:
-        desc += f"\n\n💡 今日の雑学: {trivia}"
-    
-    emb.description = desc
+        emb.add_field(name="💡 今日の雑学", value=trivia, inline=False)
+
     return emb
 
 # --- Google Calendar 管理クラス ---
