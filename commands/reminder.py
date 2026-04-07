@@ -66,85 +66,69 @@ def parse_extended_datetime(date_str, time_str):
     return base_dt + timedelta(days=(hours // 24)) + timedelta(hours=(hours % 24), minutes=minutes)
 
 # --- 天気予報取得関数 ---
-def get_weather():
-    try:
-        url = "https://api.open-meteo.com/v1/forecast?latitude=31.9111&longitude=131.4239&daily=weathercode,temperature_2m_max,temperature_2m_min&timezone=Asia%2FTokyo"
-        r = requests.get(url, timeout=5).json()
-        forecast = {}
-        for i, d in enumerate(r['daily']['time']):
-            code = r['daily']['weathercode'][i]
-            w_text = WEATHER_CODES.get(code, "❓")
-            t_max = r['daily']['temperature_2m_max'][i]
-            t_min = r['daily']['temperature_2m_min'][i]
-            forecast[d] = f"{w_text} ({t_max}℃/{t_min}℃)"
-        return forecast
-    except:
-        return {}
-
-# --- 通知用Embed作成関数 ---
 def create_daily_embed(now, weather_forecast, trivia, all_evs, is_test=False):
-    """
-    今日の日付、天気、雑学、今日の詳細予定、および1週間の簡易予定Embedを作成する
-    """
-    today_date_str = now.strftime('%Y-%m-%d')
-    title_suffix = "（テスト）" if is_test else ""
+    today_str = now.strftime('%Y-%m-%d')
+    wd = WEEKDAYS[now.weekday()]
     
-    # 1. 今日の予定を抽出・ソート
-    today_evs = [e for e in all_evs if e['start'].get('dateTime', e['start'].get('date'))[:10] == today_date_str]
+    # --- 1. 今日の予定を整理 ---
+    today_evs = [e for e in all_evs if e['start'].get('dateTime', e['start'].get('date'))[:10] == today_str]
     today_evs.sort(key=lambda x: x['start'].get('dateTime', x['start'].get('date')))
 
-    # 2. 向こう1週間の予定をグループ化 (今日を含まない明日以降)
-    upcoming_lines = []
-    future_evs = [e for e in all_evs if e['start'].get('dateTime', e['start'].get('date'))[:10] > today_date_str]
+    today_schedule = ""
+    if not today_evs:
+        today_schedule = "　✨ 今日の予定は特にありません。ゆっくり過ごしましょう！"
+    else:
+        for e in today_evs:
+            st = e['start'].get('dateTime') or e['start'].get('date')
+            time_val = f"[{dt.strftime('%H:%M')}]" if 'T' in st else "[ 終日 ]"
+            if 'T' in st:
+                dt = datetime.fromisoformat(st.replace('Z', '+00:00')).astimezone(JST)
+                time_val = f"● {dt.strftime('%H:%M')}"
+            else:
+                time_val = "● 終日 "
+            
+            summary = e.get('summary', '無題')
+            # ジャンル絵文字の決定
+            emoji = "🔹"
+            for k, info in GENRES.items():
+                if info["tag"] in summary:
+                    emoji = info["emoji"]
+                    break
+            today_schedule += f"{time_val} | {emoji} {summary}\n"
+
+    # --- 2. 週間サマリーを整理 ---
+    upcoming_section = ""
+    future_evs = [e for e in all_evs if e['start'].get('dateTime', e['start'].get('date'))[:10] > today_str]
     future_evs.sort(key=lambda x: x['start'].get('dateTime', x['start'].get('date')))
     
-    # 直近5件程度を表示
-    for e in future_evs[:5]:
-        d_raw = e['start'].get('dateTime', e['start'].get('date'))[:10]
-        dt = datetime.strptime(d_raw, '%Y-%m-%d')
-        day_str = dt.strftime('%m/%d')
-        wd = WEEKDAYS[dt.weekday()]
-        summary = e.get('summary', '無題')
-        upcoming_lines.append(f"・`{day_str}({wd})` **{summary}**")
+    if future_evs:
+        for e in future_evs[:5]:
+            d_raw = e['start'].get('dateTime', e['start'].get('date'))[:10]
+            d_dt = datetime.strptime(d_raw, '%Y-%m-%d')
+            upcoming_section += f"┣ {d_dt.strftime('%m/%d')}({WEEKDAYS[d_dt.weekday()]})：{e.get('summary')}\n"
+    else:
+        upcoming_section = "┣ 直近の予定はありません。"
 
-    # --- Embedの構築 ---
-    w = weather_forecast.get(today_date_str, "取得失敗")
-    emb = discord.Embed(
-        title=f"📅 {now.strftime('%m/%d')} ({WEEKDAYS[now.weekday()]}) の通知{title_suffix}", 
-        color=0xf1c40f
-    )
+    # --- 3. Embedの組み立て ---
+    w = weather_forecast.get(today_str, "取得失敗")
+    title = f"🗓️ {now.month}月{now.day}日 ({wd}) の予定表"
+    if is_test: title += " [TEST]"
 
-    # 【メイン：今日の予定詳細】
-    today_lines = []
-    for e in today_evs:
-        st = e['start'].get('dateTime') or e['start'].get('date')
-        if 'T' in st:
-            dt = datetime.fromisoformat(st.replace('Z', '+00:00')).astimezone(JST)
-            time_str = dt.strftime('%H:%M')
-        else:
-            time_str = "終日"
-        
-        summary = e.get('summary', '無題')
-        emoji = "🔹"
-        for k, info in GENRES.items():
-            if info["tag"] in summary:
-                emoji = info["emoji"]
-                break
-        today_lines.append(f"{emoji} **{time_str}** — {summary}")
+    emb = discord.Embed(title=title, color=0x2f3136) # ダークテーマに馴染む色
 
-    # フィールド1：今日の天気と予定
-    weather_text = f"宮崎の天気: **{w}**\n\n"
-    content = weather_text + ("\n".join(today_lines) if today_lines else "今日の予定はありません。")
-    emb.add_field(name="📌 今日の詳細", value=content+"\n", inline=False)
-
-    # フィールド2：1週間のサマリー
-    if upcoming_lines:
-        emb.add_field(name="🗓️ 今後の予定 (直近5件)", value="\n".join(upcoming_lines)+"\n", inline=False)
-
-    # 雑学（フッター的に最後に配置）
+    # 【上段】天気と雑学をコンパクトに
+    weather_trivia = f"🌡️ 天気：{w}\n"
     if trivia:
-        emb.add_field(name="💡 今日の雑学", value=trivia, inline=False)
+        weather_trivia += f"💡 雑学：{trivia}"
+    emb.add_field(name="──────────────", value=weather_trivia, inline=False)
 
+    # 【中段】メインの予定（ここを一番大きく見せる）
+    emb.add_field(name="📌 本日のスケジュール", value=f"```md\n{today_schedule}```", inline=False)
+
+    # 【下段】週間予定
+    emb.add_field(name="📅 今後の予定（直近5件）", value=f"```\n{upcoming_section}┗ 詳細はカレンダーを確認してください```", inline=False)
+
+    emb.set_footer(text="今日も一日頑張りましょう！")
     return emb
 
 # --- Google Calendar 管理クラス ---
