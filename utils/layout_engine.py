@@ -29,7 +29,7 @@ class HTMLLayoutEngine:
         HTML/CSSの構成を元に、Discord Embedを組み立てる
         """
         # CSSからデザイン設定を読み込む
-        border = self._get_css_var("--border-style", "━━━━━━━━━━━━")
+        border = self._get_css_var("--border-style", "━━━━━━━━━━━━━━━━")
         color_hex = self._get_css_var("--primary-color", "#5865f2").replace("#", "")
         
         emb = discord.Embed(
@@ -68,7 +68,7 @@ class HTMLLayoutEngine:
         weekly_md = "```\n" + ("\n".join(weekly_lines) if weekly_lines else "予定なし") + "\n```"
         emb.add_field(name="▽ Weekly Overview", value=weekly_md, inline=False)
 
-        emb.set_footer(text="Have a nice day!")
+        emb.set_footer(text="by Utool")
         return emb
 
 layout_engine = HTMLLayoutEngine()
