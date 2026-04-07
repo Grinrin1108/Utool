@@ -93,7 +93,7 @@ def create_daily_embed(now, weather_forecast, trivia, all_evs, is_test=False):
     # 天気とタイトル
     w = weather_forecast.get(today, "取得失敗")
     title_suffix = "（テスト）" if is_test else ""
-    emb = discord.Embed(title=f"{w[0]} {now.strftime('%m/%d')} 今日の通知{title_suffix}", color=0xf1c40f)
+    emb = discord.Embed(title=f"📆 {now.strftime('%m/%d')} 今日の通知{title_suffix}", color=0xf1c40f)
 
     # 予定行の作成
     lines = []
