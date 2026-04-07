@@ -104,7 +104,7 @@ def create_daily_embed(now, weather_forecast, trivia, all_evs, is_test=False):
 
     data = {
     "date": f"{now.month}/{now.day} ({WEEKDAYS[now.weekday()]})",
-    "weather": weather_forecast.get(today_str, "不明"),
+    "weather": today_weather,
     "trivia": get_trivia(),
     "today_events": today_evs,
     "future_events": future_evs

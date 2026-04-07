@@ -11,12 +11,17 @@ class HTMLLayoutEngine:
         self.html_path = os.path.join(self.template_dir, "notification.html")
 
     def _get_css_var(self, var_name, default):
-        """CSSファイルから変数の値を取得する簡易関数"""
+        """CSSファイルから変数の値を取得（コメント /* */ を正しく除外する）"""
         if not os.path.exists(self.css_path): return default
         with open(self.css_path, "r", encoding="utf-8") as f:
             for line in f:
                 if var_name in line:
-                    return line.split(":")[1].replace(";", "").strip().strip('"')
+                    # 1. ":" より後ろを取得
+                    value = line.split(":")[1]
+                    # 2. "/*" があれば、それより前だけを使う
+                    value = value.split("/*")[0]
+                    # 3. セミコロン、引用符、前後の空白を削除
+                    return value.replace(";", "").strip().strip('"')
         return default
 
     def build_embed(self, data, genres_config):
