@@ -1,0 +1,28 @@
+<div class="container">
+    <header>
+        <h1 class="title">📅 {{ date }} の定期連絡</h1>
+    </header>
+
+    <section class="info">
+        <div class="weather">🌡️ 天気: {{ weather }}</div>
+        <div class="trivia">💡 雑学: {{ trivia }}</div>
+    </section>
+
+    <section class="schedule">
+        <div class="section-label">▽ Today's Schedule</div>
+        <div class="list">
+            {{ today_events }}
+        </div>
+    </section>
+
+    <section class="weekly">
+        <div class="section-label">▽ Weekly Overview</div>
+        <div class="list">
+            {{ future_events }}
+        </div>
+    </section>
+
+    <footer>
+        <p>{{ footer_text }}</p>
+    </footer>
+</div>

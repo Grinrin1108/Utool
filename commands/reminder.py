@@ -9,6 +9,7 @@ import re
 import traceback
 import random
 import csv
+from utils.layout_engine import layout_engine
 
 # --- 設定項目 ---
 JST = timezone(timedelta(hours=9))
@@ -100,58 +101,16 @@ def create_daily_embed(now, weather_forecast, trivia, all_evs, is_test=False):
     # タイトル作成
     title_text = f"🗓️ {now.month}/{now.day} ({wd}) の定期連絡"
     if is_test: title_text += " [TEST]"
+
+    data = {
+    "date": f"{now.month}/{now.day} ({WEEKDAYS[now.weekday()]})",
+    "weather": weather_forecast.get(today_str, "不明"),
+    "trivia": get_trivia(),
+    "today_events": today_evs,
+    "future_events": future_evs
+    }
     
-    emb = discord.Embed(title=title_text, color=0x2b2d31)
-
-    # 1. 今日の概況
-    summary_val = f"🌡️ **天気**: {today_weather}"
-    if trivia:
-        summary_val += f"\n💡 **雑学**: {trivia}"
-    emb.add_field(name="┏━━━━━━━━━━━━━━━┓", value=summary_val, inline=False)
-
-    # 2. 今日の詳細スケジュール（表形式）
-    schedule_text = ""
-    if not today_evs:
-        schedule_text = "✨ 本日の予定はありません。"
-    else:
-        for e in today_evs:
-            st = e['start'].get('dateTime') or e['start'].get('date')
-            if 'T' in st:
-                dt_obj = datetime.fromisoformat(st.replace('Z', '+00:00')).astimezone(JST)
-                time_str = dt_obj.strftime('%H:%M')
-            else:
-                time_str = " 終日 "
-            
-            summary = e.get('summary', '無題')
-            emoji = "🔹"
-            for k, info in GENRES.items():
-                if info["tag"] in summary:
-                    emoji = info["emoji"]
-                    break
-            schedule_text += f"{time_str} ┃ {emoji} {summary}\n"
-
-    emb.add_field(
-        name="┃ 📌 本日の詳細スケジュール", 
-        value=f"```md\n{schedule_text}```", 
-        inline=False
-    )
-
-    # 3. 週間予定サマリー
-    if future_evs:
-        upcoming_text = ""
-        for i, e in enumerate(future_evs[:5]):
-            d_raw = e['start'].get('dateTime', e['start'].get('date'))[:10]
-            d_dt = datetime.strptime(d_raw, '%Y-%m-%d')
-            mark = "┗" if i == len(future_evs[:5]) - 1 else "┣"
-            upcoming_text += f"{mark} {d_dt.strftime('%m/%d')}({WEEKDAYS[d_dt.weekday()]}): {e.get('summary')}\n"
-        
-        emb.add_field(
-            name="┃ 📅 今後の予定（直近5件）", 
-            value=f"```\n{upcoming_text}```", 
-            inline=False
-        )
-
-    emb.set_footer(text="今日も良い一日になりますように！")
+    emb = layout_engine.build_embed(data, GENRES)
     return emb
 
 # --- Google Calendar 管理クラス ---
