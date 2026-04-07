@@ -81,6 +81,51 @@ def get_weather():
     except:
         return {}
 
+def create_daily_embed(now, weather_forecast, trivia, all_evs, is_test=False):
+    """
+    今日の日付、天気、雑学、予定リストから通知用Embedを作成する共通関数
+    """
+    today = now.strftime('%Y-%m-%d')
+    # 「今日」の予定だけに絞り込んで時間をソート
+    today_evs = [e for e in all_evs if e['start'].get('dateTime', e['start'].get('date'))[:10] == today]
+    today_evs.sort(key=lambda x: x['start'].get('dateTime', x['start'].get('date')))
+
+    # 天気とタイトル
+    w = weather_forecast.get(today, "取得失敗")
+    title_suffix = "（テスト）" if is_test else ""
+    emb = discord.Embed(title=f"☀️ {now.strftime('%m/%d')} 今日の通知{title_suffix}", color=0xf1c40f)
+
+    # 予定行の作成
+    lines = []
+    for e in today_evs:
+        st = e['start'].get('dateTime') or e['start'].get('date')
+        if 'T' in st:
+            dt = datetime.fromisoformat(st.replace('Z', '+00:00')).astimezone(JST)
+            start_str = dt.strftime('%H:%M')
+        else:
+            start_str = "終日"
+        
+        summary = e.get('summary', '無題')
+        emoji = "🔹"
+        for k, info in GENRES.items():
+            if info["tag"] in summary:
+                emoji = info["emoji"]
+                break
+        lines.append(f"{emoji} **{start_str}** {summary}")
+
+    # 説明文の組み立て
+    desc = f"宮崎の天気: **{w}**\n\n"
+    if lines:
+        desc += "\n".join(lines)
+    else:
+        desc += "今日の予定はありません。"
+    
+    if trivia:
+        desc += f"\n\n💡 今日の雑学: {trivia}"
+    
+    emb.description = desc
+    return emb
+
 # --- Google Calendar 管理クラス ---
 
 class GoogleCalendarManager:
@@ -330,72 +375,38 @@ def register_reminder_commands(bot, data_manager):
             emb = discord.Embed(title="🗓️ カレンダー操作パネル", description="複数カレンダー対応・予定の管理が可能です。", color=0x4285F4)
             await it.response.send_message(embed=emb, view=ReminderMenuView(gcal, data_manager), ephemeral=True)
 
-        @app_commands.command(name="test", description="【管理者用】設定が正しいか今すぐ通知テストを行います")
+        @app_commands.command(name="test", description="【管理者用】通知テストを行います")
         async def rem_test(self, it: discord.Interaction):
             if not it.user.guild_permissions.manage_guild:
-                return await it.response.send_message("このコマンドはサーバー管理者のみ実行できます。", ephemeral=True)
+                return await it.response.send_message("管理者のみ実行可能です。", ephemeral=True)
 
             await it.response.defer(ephemeral=True)
-
+            
             gid = str(it.guild_id)
             gdata = data_manager.get_guild_data(gid)
             cids = gdata.get("calendar_ids", [])
-            reminder_conf = gdata.get("reminder", {})
-            target_ch_id = reminder_conf.get("channel_id")
+            target_ch_id = gdata.get("reminder", {}).get("channel_id")
             
             if not cids or not target_ch_id:
-                return await it.followup.send("❌ 設定が足りません。`/rem menu` から設定してください。")
-
-            target_ch = bot.get_channel(target_ch_id)
-            if not target_ch:
-                return await it.followup.send("❌ 指定されたチャンネルが見つかりません。")
+                return await it.followup.send("❌ 設定が足りません。")
 
             try:
-                # --- ここから修正：今日の日付を取得 ---
                 now = datetime.now(JST)
-                today = now.strftime('%Y-%m-%d')
-
-                # 天気取得（辞書から「今日」の分だけを取り出す）
-                weather_forecast = get_weather()
-                w = weather_forecast.get(today, "取得失敗")
-
-                # 雑学を取得
-                trivia = get_trivia()
-                
-                lines = []
+                # 全てのカレンダーから予定を取得
+                all_evs = []
                 for cid in cids:
-                    # カレンダーから予定を取得
-                    events = gcal.get_events(cid, days=1)
-                    # 「今日」の日付から始まる予定だけに絞り込む
-                    today_evs = [e for e in events if e['start'].get('dateTime', e['start'].get('date'))[:10] == today]
-                    
-                    for e in today_evs:
-                        start_str = ""
-                        st = e['start'].get('dateTime') or e['start'].get('date')
-                        if 'T' in st:
-                            dt = datetime.fromisoformat(st.replace('Z', '+00:00')).astimezone(JST)
-                            start_str = dt.strftime('%H:%M')
-                        else:
-                            start_str = "終日"
-                        
-                        summary = e.get('summary', '無題')
-                        emoji = "🔹"
-                        for k, info in GENRES.items():
-                            if info["tag"] in summary:
-                                emoji = info["emoji"]
-                                break
-                        lines.append(f"{emoji} **{start_str}** {summary}")
-
-                # 送信
-                emb = discord.Embed(title=f"☀️ {now.strftime('%m/%d')} 今日の予定（テスト）", color=0xf1c40f)
-                emb.description = f"宮崎の天気: **{w}**\n\n" + ("\n".join(lines) if lines else "今日の予定はありません。") + (f"\n\n💡 今日の雑学: {trivia}" if trivia else "")
+                    all_evs.extend(gcal.get_events(cid, days=1))
                 
-                await target_ch.send(embed=emb)
-                await it.followup.send(f"✅ <#{target_ch_id}> に「今日だけ」の通知を送信しました！")
-
+                # 共通関数でEmbedを作成
+                emb = create_daily_embed(now, get_weather(), get_trivia(), all_evs, is_test=True)
+                
+                target_ch = bot.get_channel(target_ch_id)
+                if target_ch:
+                    await target_ch.send(embed=emb)
+                    await it.followup.send(f"✅ <#{target_ch_id}> にテスト送信しました。")
             except Exception as e:
                 print(traceback.format_exc())
-                await it.followup.send(f"❌ エラーが発生しました: `{e}`")
+                await it.followup.send(f"❌ エラー: `{e}`")
 
     bot.tree.add_command(Reminder())
 
@@ -442,34 +453,17 @@ def register_reminder_commands(bot, data_manager):
 
                 # 朝6時の通知
                 if now.hour == 6 and now.minute == 0 and last_morning != today:
-                    weather = get_weather()
-                    trivia = get_trivia()
                     all_evs = []
-                    for cid in cids: all_evs.extend(gcal.get_events(cid, days=1))
-                    today_evs = [e for e in all_evs if e['start'].get('dateTime', e['start'].get('date'))[:10] == today]
-                    if today_evs or trivia:
-                        today_evs.sort(key=lambda x: x['start'].get('dateTime', x['start'].get('date')))
-                        emb = discord.Embed(title=f"☀️ {now.strftime('%m/%d')} 今日の通知", color=0xf1c40f)
-                        w = weather.get(today, "取得失敗")
-                        lines = [f"・`{e['start'].get('dateTime','     ')[11:16] or ' 終日 '}` **{e.get('summary')}**" for e in today_evs]
-                        
-                        # --- 説明文(description)の組み立て ---
-                        desc = f"宮崎の天気: **{w}**\n\n"
-                        
-                        if lines:
-                            desc += "\n".join(lines)
-                        else:
-                            desc += "今日の予定はありません。"
-                        
-                        if trivia:
-                            desc += f"\n\n💡 今日の雑学: {trivia}"
-                        # ------------------------------------
-                        
-                        emb.description = desc
-                        await ch.send(embed=emb)
+                    for cid in cids:
+                        all_evs.extend(gcal.get_events(cid, days=1))
                     
-                    # 全てのギルドの処理が終わったらフラグを立てる
-                    if gid == list(data_manager.data.keys())[-1]: last_morning = today
+                    # 共通関数を呼び出し（is_testはデフォルトFalse）
+                    emb = create_daily_embed(now, get_weather(), get_trivia(), all_evs)
+                    
+                    await ch.send(embed=emb)
+                    
+                    if gid == list(data_manager.data.keys())[-1]: 
+                        last_morning = today
 
                 # 10分前通知
                 for cid in cids:
