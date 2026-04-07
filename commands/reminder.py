@@ -82,35 +82,37 @@ def get_weather():
         return {}
     
 # --- 通知用Embed作成関数 ---
-def create_daily_embed(now, weather, trivia, all_evs, is_test=False):
+def create_daily_embed(now, weather_forecast, trivia, all_evs, is_test=False):
     today_str = now.strftime('%Y-%m-%d')
     wd = WEEKDAYS[now.weekday()]
     
-    # 1. 今日の予定を抽出・ソート
+    # 【修正】今日の天気だけをピンポイントで抽出
+    today_weather = weather_forecast.get(today_str, "取得失敗")
+
+    # 今日の予定を抽出・ソート
     today_evs = [e for e in all_evs if e['start'].get('dateTime', e['start'].get('date'))[:10] == today_str]
     today_evs.sort(key=lambda x: x['start'].get('dateTime', x['start'].get('date')))
 
-    # 2. 週間予定を抽出（今日より後、5件まで）
+    # 明日以降の予定（5件まで）
     future_evs = [e for e in all_evs if e['start'].get('dateTime', e['start'].get('date'))[:10] > today_str]
     future_evs.sort(key=lambda x: x['start'].get('dateTime', x['start'].get('date')))
 
-    # --- デザイン構築 ---
-    title = f"📅 {now.month}/{now.day} ({wd}) の予定表"
-    if is_test: title += " [TEST]"
+    # タイトル作成
+    title_text = f"🗓️ {now.month}/{now.day} ({wd}) の定期連絡"
+    if is_test: title_text += " [TEST]"
     
-    # Discordのダークモードに合う高級感のある黒 (0x2b2d31)
-    emb = discord.Embed(title=title, color=0x2b2d31)
+    emb = discord.Embed(title=title_text, color=0x2b2d31)
 
-    # 【上段】天気と雑学
-    info_text = f"🌡️ **{weather}**"
+    # 1. 今日の概況
+    summary_val = f"🌡️ **天気**: {today_weather}"
     if trivia:
-        info_text += f" ｜ 💡 {trivia}"
-    emb.add_field(name="────────────────", value=info_text, inline=False)
+        summary_val += f"\n💡 **雑学**: {trivia}"
+    emb.add_field(name="┏━━━━━━━━━━━━━━━┓", value=summary_val, inline=False)
 
-    # 【中段】メインスケジュール（コードブロックでリスト化）
-    schedule_lines = []
+    # 2. 今日の詳細スケジュール（表形式）
+    schedule_text = ""
     if not today_evs:
-        schedule_lines.append("✨ 今日の予定はありません。")
+        schedule_text = "✨ 本日の予定はありません。"
     else:
         for e in today_evs:
             st = e['start'].get('dateTime') or e['start'].get('date')
@@ -118,7 +120,7 @@ def create_daily_embed(now, weather, trivia, all_evs, is_test=False):
                 dt_obj = datetime.fromisoformat(st.replace('Z', '+00:00')).astimezone(JST)
                 time_str = dt_obj.strftime('%H:%M')
             else:
-                time_str = "終日 "
+                time_str = " 終日 "
             
             summary = e.get('summary', '無題')
             emoji = "🔹"
@@ -126,29 +128,30 @@ def create_daily_embed(now, weather, trivia, all_evs, is_test=False):
                 if info["tag"] in summary:
                     emoji = info["emoji"]
                     break
-            schedule_lines.append(f"{time_str} ┃ {emoji} {summary}")
-    
+            schedule_text += f"{time_str} ┃ {emoji} {summary}\n"
+
     emb.add_field(
-        name="📌 本日の詳細", 
-        value=f"```md\n" + "\n".join(schedule_lines) + "\n```", 
+        name="┃ 📌 本日の詳細スケジュール", 
+        value=f"```md\n{schedule_text}```", 
         inline=False
     )
 
-    # 【下段】週間サマリー
+    # 3. 週間予定サマリー
     if future_evs:
         upcoming_text = ""
-        for e in future_evs[:5]:
+        for i, e in enumerate(future_evs[:5]):
             d_raw = e['start'].get('dateTime', e['start'].get('date'))[:10]
             d_dt = datetime.strptime(d_raw, '%Y-%m-%d')
-            upcoming_text += f"┣ `{d_dt.strftime('%m/%d')}` {e.get('summary')}\n"
+            mark = "┗" if i == len(future_evs[:5]) - 1 else "┣"
+            upcoming_text += f"{mark} {d_dt.strftime('%m/%d')}({WEEKDAYS[d_dt.weekday()]}): {e.get('summary')}\n"
         
         emb.add_field(
-            name="🗓️ 今後の予定（直近5件）", 
-            value=f"{upcoming_text}┗ 詳細はカレンダーを確認！", 
+            name="┃ 📅 今後の予定（直近5件）", 
+            value=f"```\n{upcoming_text}```", 
             inline=False
         )
 
-    emb.set_footer(text="Have a nice day!")
+    emb.set_footer(text="今日も良い一日になりますように！")
     return emb
 
 # --- Google Calendar 管理クラス ---
