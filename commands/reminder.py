@@ -483,7 +483,7 @@ def register_reminder_commands(bot, data_manager):
                                     color = 0xe74c3c
                                     for k, info in GENRES.items():
                                         if info["tag"] in summary: color = info["color"]; break
-                                    await ch.send(content="@everyone 🕒 10分前", embed=discord.Embed(title=summary, description="間もなく開始します。", color=color))
+                                    await ch.send(content="🕒 10分前", embed=discord.Embed(title=summary, description="間もなく開始します。", color=color))
                                     reminded_ids.add(e['id'])
                     except: pass
             if len(reminded_ids) > 200: reminded_ids.clear()
