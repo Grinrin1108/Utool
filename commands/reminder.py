@@ -9,7 +9,6 @@ import re
 import traceback
 import random
 import csv
-from PIL import Image, ImageDraw, ImageFont
 
 # --- 設定項目 ---
 JST = timezone(timedelta(hours=9))
@@ -31,35 +30,6 @@ WEATHER_CODES = {
     61: "☔雨", 63: "☔雨", 65: "☔激しい雨", 71: "❄️雪", 73: "❄️雪", 75: "❄️激しい雪",
     80: "🌦️にわか雨", 81: "🌦️にわか雨", 82: "🌦️激しいにわか雨", 95: "⚡雷雨"
 }
-
-def create_daily_image(now, weather, trivia, today_evs):
-    # 1. ベース画像作成 (横800x縦500)
-    img = Image.new('RGB', (800, 500), color='#2C2F33')
-    draw = ImageDraw.Draw(img)
-    
-    # 2. フォントの設定（サーバーにある日本語フォントを指定）
-    # ※ Koyeb等のLinux環境では "/usr/share/fonts/..." などのパス指定が必要
-    font_large = ImageFont.truetype("GenShinGothic-Bold.ttf", 60)
-    font_mid = ImageFont.truetype("GenShinGothic-Medium.ttf", 25)
-    
-    # 3. 描画
-    # 日付
-    draw.text((40, 40), f"{now.month}/{now.day}", fill='#FFFFFF', font=font_large)
-    draw.text((40, 120), f"{WEEKDAYS[now.weekday()]}曜日", fill='#7289DA', font=font_mid)
-    
-    # 天気
-    draw.text((600, 40), weather, fill='#F1C40F', font=font_mid)
-    
-    # 今日の予定
-    y_cursor = 200
-    draw.text((40, 170), "【 本日の予定 】", fill='#99AAB5', font=font_mid)
-    for ev in today_evs[:5]:
-        draw.text((60, y_cursor), f"● {ev['summary']}", fill='#FFFFFF', font=font_mid)
-        y_cursor += 40
-        
-    # 4. 保存
-    img.save("daily.png")
-    return discord.File("daily.png")
 
 # --- 雑学取得関数 ---
 def get_trivia():
@@ -116,7 +86,7 @@ def create_daily_embed(now, weather, trivia, all_evs, is_test=False):
     today_str = now.strftime('%Y-%m-%d')
     wd = WEEKDAYS[now.weekday()]
     
-    # 1. 今日の予定を抽出
+    # 1. 今日の予定を抽出・ソート
     today_evs = [e for e in all_evs if e['start'].get('dateTime', e['start'].get('date'))[:10] == today_str]
     today_evs.sort(key=lambda x: x['start'].get('dateTime', x['start'].get('date')))
 
@@ -125,26 +95,25 @@ def create_daily_embed(now, weather, trivia, all_evs, is_test=False):
     future_evs.sort(key=lambda x: x['start'].get('dateTime', x['start'].get('date')))
 
     # --- デザイン構築 ---
-    title = f"📅 {now.month}/{now.day} ({wd}) の定期連絡"
+    title = f"📅 {now.month}/{now.day} ({wd}) の予定表"
     if is_test: title += " [TEST]"
     
-    # Discordの背景に溶け込むダークグレー（0x2b2d31）
+    # Discordのダークモードに合う高級感のある黒 (0x2b2d31)
     emb = discord.Embed(title=title, color=0x2b2d31)
 
-    # 【上段】天気と雑学（1行でスッキリ）
+    # 【上段】天気と雑学
     info_text = f"🌡️ **{weather}**"
     if trivia:
         info_text += f" ｜ 💡 {trivia}"
-    emb.add_field(name="──────────────", value=info_text, inline=False)
+    emb.add_field(name="────────────────", value=info_text, inline=False)
 
-    # 【中段】今日の詳細スケジュール（コードブロックで表形式に）
+    # 【中段】メインスケジュール（コードブロックでリスト化）
     schedule_lines = []
     if not today_evs:
-        schedule_lines.append("✨ 予定はありません。")
+        schedule_lines.append("✨ 今日の予定はありません。")
     else:
         for e in today_evs:
             st = e['start'].get('dateTime') or e['start'].get('date')
-            # 時間の計算
             if 'T' in st:
                 dt_obj = datetime.fromisoformat(st.replace('Z', '+00:00')).astimezone(JST)
                 time_str = dt_obj.strftime('%H:%M')
@@ -152,7 +121,6 @@ def create_daily_embed(now, weather, trivia, all_evs, is_test=False):
                 time_str = "終日 "
             
             summary = e.get('summary', '無題')
-            # ジャンルに応じた絵文字
             emoji = "🔹"
             for k, info in GENRES.items():
                 if info["tag"] in summary:
@@ -160,14 +128,13 @@ def create_daily_embed(now, weather, trivia, all_evs, is_test=False):
                     break
             schedule_lines.append(f"{time_str} ┃ {emoji} {summary}")
     
-    # ```ansi という特殊な書き方で、文字に色をつけることも可能（今回はシンプルにmd）
     emb.add_field(
         name="📌 本日の詳細", 
         value=f"```md\n" + "\n".join(schedule_lines) + "\n```", 
         inline=False
     )
 
-    # 【下段】1週間の予定（リスト形式）
+    # 【下段】週間サマリー
     if future_evs:
         upcoming_text = ""
         for e in future_evs[:5]:
@@ -181,7 +148,7 @@ def create_daily_embed(now, weather, trivia, all_evs, is_test=False):
             inline=False
         )
 
-    emb.set_footer(text="今日も良い一日になりますように！")
+    emb.set_footer(text="Have a nice day!")
     return emb
 
 # --- Google Calendar 管理クラス ---
