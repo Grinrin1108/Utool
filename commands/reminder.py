@@ -111,10 +111,10 @@ def create_daily_embed(now, weather_forecast, trivia, all_evs, is_test=False):
     }
     
     emb = layout_engine.build_embed(data, GENRES)
+    
     return emb
 
 # --- Google Calendar 管理クラス ---
-
 class GoogleCalendarManager:
     def __init__(self):
         from google.oauth2 import service_account
@@ -344,7 +344,6 @@ class ReminderMenuView(ui.View):
         await it.response.send_modal(CalModal(self.dm))
 
 # --- コマンド登録と通知ループ ---
-
 def register_reminder_commands(bot, data_manager):
     gcal = GoogleCalendarManager()
 
