@@ -10,6 +10,7 @@ import traceback
 import random
 import csv
 from utils.layout_engine import layout_engine
+from commands.attendance import AttendanceView 
 
 # --- 設定項目 ---
 JST = timezone(timedelta(hours=9))
@@ -378,6 +379,7 @@ def register_reminder_commands(bot, data_manager):
 
             try:
                 now = datetime.now(JST)
+                today = now.strftime('%Y-%m-%d')
                 # 全てのカレンダーから予定を取得
                 all_evs = []
                 for cid in cids:
@@ -389,6 +391,19 @@ def register_reminder_commands(bot, data_manager):
                 target_ch = bot.get_channel(target_ch_id)
                 if target_ch:
                     await target_ch.send(embed=emb)
+
+                    # --- ここから追加：出欠確認パネルの送信 ---
+                    today_str = today.strftime('%Y/%m/%d')
+                    att_emb = discord.Embed(
+                        title=f"📝 {today_str} 出欠確認",
+                        description="今日の予定に合わせて、以下のボタンから回答をお願いします！",
+                        color=0x2ecc71 # 出席用の緑色
+                    )
+                    # AttendanceViewを初期化して送信
+                    view = AttendanceView(data_manager, gid, today_str)
+                    await target_ch.send(embed=att_emb, view=view)
+                    # --- ここまで追加 ---
+
                     await it.followup.send(f"✅ <#{target_ch_id}> にテスト送信しました。")
             except Exception as e:
                 print(traceback.format_exc())
@@ -447,6 +462,18 @@ def register_reminder_commands(bot, data_manager):
                     emb = create_daily_embed(now, get_weather(), get_trivia(), all_evs)
                     
                     await ch.send(embed=emb)
+
+                    # --- ここから追加：出欠確認パネルの送信 ---
+                    today_str = today.strftime('%Y/%m/%d')
+                    att_emb = discord.Embed(
+                        title=f"📝 {today_str} 出欠確認",
+                        description="今日の予定に合わせて、以下のボタンから回答をお願いします！",
+                        color=0x2ecc71 # 出席用の緑色
+                    )
+                    # AttendanceViewを初期化して送信
+                    view = AttendanceView(data_manager, gid, today_str)
+                    await ch.send(embed=att_emb, view=view)
+                    # --- ここまで追加 ---
                     
                     if gid == list(data_manager.data.keys())[-1]: 
                         last_morning = today
