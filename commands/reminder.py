@@ -434,7 +434,7 @@ def register_reminder_commands(bot, data_manager):
             except Exception as e:
                 print(f"❌ ステータス更新エラー: {e}")
             
-            # 1時間(3600秒)ごとに切り替え
+            # 1時間(180秒)ごとに切り替え
             await asyncio.sleep(180)
 
     async def notification_loop():
