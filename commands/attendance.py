@@ -65,7 +65,7 @@ def register_attendance_commands(bot, data_manager):
             val = "\n".join(names) if names else "なし"
             emb.add_field(name=f"{status} ({len(names)}人)", value=val, inline=True)
             
-        await it.response.send_message(embed=emb)
+        await it.response.send_message(embed=emb, ephemeral=True)
 
     @bot.tree.command(name="attend_export", description="これまでの出席データをCSV(Excel用)で書き出します")
     async def attend_export(it: discord.Interaction):
