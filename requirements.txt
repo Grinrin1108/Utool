@@ -8,3 +8,4 @@ google-auth-httplib2
 google-auth-oauthlib
 jinja2
 html2image
+google-generativeai
