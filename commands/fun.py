@@ -2,12 +2,15 @@ import random
 from discord import app_commands
 import discord
 import os
-import google.generativeai as genai
+from google import genai # 新しいライブラリのインポート
 
 # --- Gemini APIの初期設定 ---
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
+    # 新しいクライアントの作り方
+    client = genai.Client(api_key=GEMINI_API_KEY)
+else:
+    client = None
 
 def register_fun_commands(bot):
     
@@ -39,27 +42,20 @@ def register_fun_commands(bot):
             await msg.add_reaction(emojis[i])
         await interaction.followup.send("✅ 投票を作成しました", ephemeral=True)
 
-    # 🌟 新機能：メッセージの右クリックメニュー
+    # 🌟 メッセージの右クリックメニュー（AI添削）
     @bot.tree.context_menu(name="AIで面白く添削")
     async def funny_edit(interaction: discord.Interaction, message: discord.Message):
-        # AIの処理に数秒かかるため、先に「考え中」状態にする
         await interaction.response.defer()
 
         original_text = message.content
 
-        # テキストがない場合（画像のみなど）の処理
         if not original_text:
             return await interaction.followup.send("📝 テキストがないメッセージは添削できないみたいです！")
 
-        # APIキーが設定されていない場合のエラー回避
-        if not GEMINI_API_KEY:
+        if not client:
             return await interaction.followup.send("❌ Gemini APIキーが設定されていません。`.env` を確認してください。")
 
         try:
-            # 'gemini-1.5-flash-latest' または 'gemini-pro' に変更します
-            model = genai.GenerativeModel('gemini-pro')
-            
-            # AIに与える指示（プロンプト）
             prompt = f"""
             あなたはDiscordサーバーのユーモアあふれるエンターテイナーです。
             以下のユーザーのメッセージを、面白おかしく添削、または強烈なツッコミを入れてください。
@@ -73,25 +69,26 @@ def register_fun_commands(bot):
             【元のメッセージ】
             「{original_text}」
             """
-            # Discord Botがフリーズしないように「非同期処理」でAIを呼び出す
-            response = await model.generate_content_async(prompt)
             
-            # AIの安全フィルター（暴言やNGワードなど）で回答がブロックされたかチェック
-            try:
-                edited_text = response.text
-            except ValueError:
-                return await interaction.followup.send("⚠️ 添削しようとしましたが、内容が過激すぎてAIの安全フィルターに止められました...！")
+            # 最新の非同期処理の呼び出し方（高速な gemini-2.5-flash モデルを使用）
+            response = await client.aio.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=prompt
+            )
+            
+            # 安全フィルターチェック
+            if not response.text:
+                return await interaction.followup.send("⚠️ 内容が過激すぎてAIの安全フィルターに止められました...！")
+                
+            edited_text = response.text
 
-            # Discordの文字数制限（2000文字）対策
+            # 文字数制限対策
             if len(edited_text) > 1800:
                 edited_text = edited_text[:1800] + "\n...(長すぎたのでカットしたぜ！)"
 
-            # 見栄え良く整形して送信
             final_message = f"**🤖 AIによる {message.author.display_name} への添削結果**\n> {original_text}\n\n{edited_text}"
-            
             await interaction.followup.send(final_message)
 
         except Exception as e:
             print(f"Gemini API Error: {e}")
-            # エラーの正体をDiscord上にも表示させる
-            await interaction.followup.send(f"❌ AIの調子が悪いみたいです...\\n（エラー原因: `{e}`）")
+            await interaction.followup.send(f"❌ AIの調子が悪いみたいです...\n（エラー原因: `{e}`）")
