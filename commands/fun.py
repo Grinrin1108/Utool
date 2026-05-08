@@ -50,10 +50,10 @@ def register_fun_commands(bot):
         original_text = message.content
 
         if not original_text:
-            return await interaction.followup.send("📝 テキストがないメッセージは添削できないみたいです！")
+            return await interaction.followup.send("📝 テキストがないメッセージは添削できないみたいです！", ephemeral=True)
 
         if not client:
-            return await interaction.followup.send("❌ Gemini APIキーが設定されていません。`.env` を確認してください。")
+            return await interaction.followup.send("❌ Gemini APIキーが設定されていません。`.env` を確認してください。", ephemeral=True)
 
         try:
             prompt = f"""
@@ -78,7 +78,7 @@ def register_fun_commands(bot):
             
             # 安全フィルターチェック
             if not response.text:
-                return await interaction.followup.send("⚠️ 内容が過激すぎてAIの安全フィルターに止められました...！")
+                return await interaction.followup.send("⚠️ 内容が過激すぎてAIの安全フィルターに止められました...！", ephemeral=True)
                 
             edited_text = response.text
 
@@ -91,4 +91,4 @@ def register_fun_commands(bot):
 
         except Exception as e:
             print(f"Gemini API Error: {e}")
-            await interaction.followup.send(f"❌ AIの調子が悪いみたいです...\n（エラー原因: `{e}`）")
+            await interaction.followup.send(f"❌ AIの調子が悪いみたいです...\n（エラー原因: `{e}`）", ephemeral=True)
