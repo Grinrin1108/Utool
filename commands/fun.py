@@ -57,7 +57,7 @@ def register_fun_commands(bot):
 
         try:
             # 'gemini-1.5-flash-latest' または 'gemini-pro' に変更します
-            model = genai.GenerativeModel('gemini-1.5-flash-latest')
+            model = genai.GenerativeModel('gemini-pro')
             
             # AIに与える指示（プロンプト）
             prompt = f"""
