@@ -73,9 +73,14 @@ def register_fun_commands(bot):
             【元のメッセージ】
             「{original_text}」
             """
-            # AIに文章を生成させる
-            response = model.generate_content(prompt)
-            edited_text = response.text
+            # Discord Botがフリーズしないように「非同期処理」でAIを呼び出す
+            response = await model.generate_content_async(prompt)
+            
+            # AIの安全フィルター（暴言やNGワードなど）で回答がブロックされたかチェック
+            try:
+                edited_text = response.text
+            except ValueError:
+                return await interaction.followup.send("⚠️ 添削しようとしましたが、内容が過激すぎてAIの安全フィルターに止められました...！")
 
             # Discordの文字数制限（2000文字）対策
             if len(edited_text) > 1800:
@@ -88,4 +93,5 @@ def register_fun_commands(bot):
 
         except Exception as e:
             print(f"Gemini API Error: {e}")
-            await interaction.followup.send("❌ AIの調子が悪いみたいです...（エラーが発生しました）")
+            # エラーの正体をDiscord上にも表示させる
+            await interaction.followup.send(f"❌ AIの調子が悪いみたいです...\\n（エラー原因: `{e}`）")
