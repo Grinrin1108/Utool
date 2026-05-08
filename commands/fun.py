@@ -56,6 +56,12 @@ class PersonaSelect(discord.ui.Select):
                 "desc_affirm": "天晴れなり！と武士の魂で大絶賛"
             },
             {
+                "label": "おじさん構文風",
+                "emoji": "👴",
+                "desc_edit": "絵文字たっぷりのねっとりした長文でツッコミ😅💦",
+                "desc_affirm": "絵文字乱舞で〇〇チャンをひたすら褒めちぎるヨ❗"
+            },
+            {
                 "label": "ランダム",
                 "emoji": "🎲",
                 "desc_edit": "AIの気分に任せる",
@@ -165,21 +171,29 @@ def register_fun_commands(bot):
     # 🌟 右クリックメニュー1：AIで面白く添削
     @bot.tree.context_menu(name="AIで面白く添削")
     async def funny_edit(interaction: discord.Interaction, message: discord.Message):
+        # 【追加】最初に「考え中...」状態にして、3秒でタイムアウトするのを防ぎます
+        await interaction.response.defer(ephemeral=True)
+        
         if not message.content:
-            return await interaction.response.send_message("📝 テキストがないメッセージは処理できないみたいです！", ephemeral=True)
+            return await interaction.followup.send("📝 テキストがないメッセージは処理できないみたいです！")
         if not client:
-            return await interaction.response.send_message("❌ Gemini APIキーが設定されていません。", ephemeral=True)
+            return await interaction.followup.send("❌ Gemini APIキーが設定されていません。")
 
         view = PersonaView(message, "添削")
-        await interaction.response.send_message("どのスタイルで【添削】しますか？", view=view, ephemeral=True)
+        # response.send_message ではなく followup.send を使います
+        await interaction.followup.send("どのスタイルで【添削】しますか？", view=view)
 
     # 🌟 右クリックメニュー2：AIで全肯定
     @bot.tree.context_menu(name="AIで全肯定")
     async def funny_affirm(interaction: discord.Interaction, message: discord.Message):
+        # 【追加】最初に「考え中...」状態にして、3秒でタイムアウトするのを防ぎます
+        await interaction.response.defer(ephemeral=True)
+        
         if not message.content:
-            return await interaction.response.send_message("📝 テキストがないメッセージは処理できないみたいです！", ephemeral=True)
+            return await interaction.followup.send("📝 テキストがないメッセージは処理できないみたいです！")
         if not client:
-            return await interaction.response.send_message("❌ Gemini APIキーが設定されていません。", ephemeral=True)
+            return await interaction.followup.send("❌ Gemini APIキーが設定されていません。")
 
         view = PersonaView(message, "全肯定")
-        await interaction.response.send_message("どのスタイルで【全肯定】しますか？", view=view, ephemeral=True)
+        # response.send_message ではなく followup.send を使います
+        await interaction.followup.send("どのスタイルで【全肯定】しますか？", view=view)
