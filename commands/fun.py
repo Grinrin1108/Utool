@@ -56,8 +56,8 @@ def register_fun_commands(bot):
             return await interaction.followup.send("❌ Gemini APIキーが設定されていません。`.env` を確認してください。")
 
         try:
-            # Geminiの高速モデル（1.5 Flash）を使用
-            model = genai.GenerativeModel('gemini-1.5-flash')
+            # 'gemini-1.5-flash-latest' または 'gemini-pro' に変更します
+            model = genai.GenerativeModel('gemini-1.5-flash-latest')
             
             # AIに与える指示（プロンプト）
             prompt = f"""
