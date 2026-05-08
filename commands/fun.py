@@ -62,6 +62,12 @@ class PersonaSelect(discord.ui.Select):
                 "desc_affirm": "絵文字乱舞で〇〇チャンをひたすら褒めちぎるヨ❗"
             },
             {
+                "label": "呪術廻戦の禪院直哉風",
+                "emoji": "🦊",
+                "desc_edit": "プライド激高の京都弁で上から目線で煽る",
+                "desc_affirm": "上から目線の傲慢な京都弁やけど実はめっちゃ認めてる"
+            },
+            {
                 "label": "ランダム",
                 "emoji": "🎲",
                 "desc_edit": "AIの気分に任せる",
@@ -171,7 +177,7 @@ def register_fun_commands(bot):
     # 🌟 右クリックメニュー1：AIで面白く添削
     @bot.tree.context_menu(name="AIで面白く添削")
     async def funny_edit(interaction: discord.Interaction, message: discord.Message):
-        # 【追加】最初に「考え中...」状態にして、3秒でタイムアウトするのを防ぎます
+        # 最初に「考え中...」状態にして、3秒でタイムアウトするのを防ぐ
         await interaction.response.defer(ephemeral=True)
         
         if not message.content:
@@ -180,13 +186,12 @@ def register_fun_commands(bot):
             return await interaction.followup.send("❌ Gemini APIキーが設定されていません。")
 
         view = PersonaView(message, "添削")
-        # response.send_message ではなく followup.send を使います
         await interaction.followup.send("どのスタイルで【添削】しますか？", view=view)
 
     # 🌟 右クリックメニュー2：AIで全肯定
     @bot.tree.context_menu(name="AIで全肯定")
     async def funny_affirm(interaction: discord.Interaction, message: discord.Message):
-        # 【追加】最初に「考え中...」状態にして、3秒でタイムアウトするのを防ぎます
+        # 最初に「考え中...」状態にして、3秒でタイムアウトするのを防ぐ
         await interaction.response.defer(ephemeral=True)
         
         if not message.content:
@@ -195,5 +200,4 @@ def register_fun_commands(bot):
             return await interaction.followup.send("❌ Gemini APIキーが設定されていません。")
 
         view = PersonaView(message, "全肯定")
-        # response.send_message ではなく followup.send を使います
         await interaction.followup.send("どのスタイルで【全肯定】しますか？", view=view)
