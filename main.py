@@ -8,6 +8,8 @@ import threading
 import requests
 import time
 import sys
+import asyncio
+import random
 
 # ユーティリティ
 from utils.data_manager import DataManager
@@ -65,7 +67,31 @@ async def on_ready():
         bot.initialized = True
         print(f"✅ すべてのコマンドを同期しました！")
 
+STATUSES = [
+    "宮崎の空を監視中 ☁️",
+    "ハッキング中．．．💻",
+    "いたずら中... 😈",
+    "競プロ練習中... 🎓",
+    "数学の証明を考え中... 📐",
+    "雑学収集中... 📚",
+    "まーじゃん中... 🀄",
+    "ゲーム中... 🎮"
+]
+
+async def status_loop(bot):
+    await bot.wait_until_ready()
+    while not bot.is_closed():
+        try:
+            current_status = random.choice(STATUSES)
+            await bot.change_presence(activity=discord.Game(name=current_status))
+        except Exception as e:
+            print(f"❌ ステータス更新エラー: {e}")
+        
+        # 1時間（3600秒）ごとに切り替え
+        await asyncio.sleep(3600)
+
 if __name__ == "__main__":
     threading.Thread(target=run_flask, daemon=True).start()
     threading.Thread(target=keep_alive, daemon=True).start()
+    asyncio.create_task(status_loop(bot))
     bot.run(TOKEN)
