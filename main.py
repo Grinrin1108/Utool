@@ -11,7 +11,7 @@ import sys
 
 # ユーティリティ
 from utils.data_manager import DataManager
-from commands import help, utility, fun, reminder, attendance
+from commands import help, utility, fun
 
 load_dotenv()
 nest_asyncio.apply()
@@ -59,9 +59,7 @@ async def on_ready():
         # コマンド登録 (Todoは削除)
         utility.register_utility_commands(bot)
         fun.register_fun_commands(bot)
-        reminder.register_reminder_commands(bot, data_manager)
         help.register_help_command(bot)
-        attendance.register_attendance_commands(bot, data_manager)
 
         await bot.tree.sync()
         bot.initialized = True
