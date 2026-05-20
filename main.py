@@ -49,23 +49,6 @@ def keep_alive():
         except: pass
         time.sleep(300)
 
-data_manager = DataManager(bot, DATA_CHANNEL_ID)
-bot.initialized = False
-
-@bot.event
-async def on_ready():
-    if not bot.initialized:
-        print(f"🚀 {bot.user} としてログインしました。モジュールを初期化します...")
-        await data_manager.load_files()
-        
-        # コマンド登録 (Todoは削除)
-        utility.register_utility_commands(bot)
-        fun.register_fun_commands(bot)
-        help.register_help_command(bot)
-
-        await bot.tree.sync()
-        bot.initialized = True
-        print(f"✅ すべてのコマンドを同期しました！")
 
 STATUSES = [
     "宮崎の空を監視中 ☁️",
@@ -90,8 +73,29 @@ async def status_loop(bot):
         # 1時間（3600秒）ごとに切り替え
         await asyncio.sleep(3600)
 
+
+data_manager = DataManager(bot, DATA_CHANNEL_ID)
+bot.initialized = False
+
+@bot.event
+async def on_ready():
+    if not bot.initialized:
+        print(f"🚀 {bot.user} としてログインしました。モジュールを初期化します...")
+        await data_manager.load_files()
+        
+        # コマンド登録 (Todoは削除)
+        utility.register_utility_commands(bot)
+        fun.register_fun_commands(bot)
+        help.register_help_command(bot)
+
+        await bot.tree.sync()
+        bot.initialized = True
+        print(f"✅ すべてのコマンドを同期しました！")
+
+        asyncio.create_task(status_loop(bot))
+
 if __name__ == "__main__":
     threading.Thread(target=run_flask, daemon=True).start()
     threading.Thread(target=keep_alive, daemon=True).start()
-    asyncio.create_task(status_loop(bot))
+    
     bot.run(TOKEN)
